@@ -183,7 +183,7 @@ else:
     logger.warning("pytds not available - SQL Server functionality disabled")
 
 # Create a new router for SQL Server Routes
-router_sqlserver = APIRouter()
+router_sqlserver = APIRouter(tags=["SQL Server"])
 
 class ImageModel(BaseModel):
     """Pydantic model for image data stored in SQL Server.

@@ -63,7 +63,7 @@ else:
     logger.info(f"AWS credentials found. SES configured for region: {SES_REGION}, from: {SES_FROM_EMAIL}")
 
 # Create a new router for Datadog Routes
-router_datadog = APIRouter()
+router_datadog = APIRouter(tags=["Datadog"])
 
 # Define request models using Pydantic
 class DatadogEventRequest(BaseModel):

@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 from fastapi import APIRouter, File, UploadFile
 
 # Create a new router for Postgres Routes
-router_amazon = APIRouter()
+router_amazon = APIRouter(tags=["Amazon S3"])
 
 # Set up logging
 logger = logging.getLogger(__name__)

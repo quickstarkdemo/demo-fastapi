@@ -10,7 +10,7 @@ from fastapi import APIRouter
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(tags=["Database Status"])
 
 
 def check_sqlserver_status() -> Dict[str, Any]:

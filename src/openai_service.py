@@ -38,7 +38,7 @@ client = OpenAI(
 )
 
 # Create a new router for OpenAI Routes
-router_openai = APIRouter()
+router_openai = APIRouter(tags=["OpenAI"])
 
 @router_openai.get("/openai-hello")
 async def openai_hello():
@@ -281,3 +281,17 @@ async def batch_summarize_youtube_videos(request: BatchYouTubeRequest):
         # Log the full exception for debugging
         logger.error(f"Unexpected error in batch_summarize_youtube_videos: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}") 
+
+
+@router_openai.post("/save-youtube-to-notion", tags=["Notion"])
+async def save_youtube_to_notion(request: YouTubeRequest):
+    """
+    Save a YouTube video summary to Notion.
+    Convenience wrapper that forces `save_to_notion=True` while reusing the core summarization logic.
+    """
+    modified_request = YouTubeRequest(
+        url=request.url,
+        instructions=request.instructions,
+        save_to_notion=True
+    )
+    return await summarize_youtube_video(modified_request)

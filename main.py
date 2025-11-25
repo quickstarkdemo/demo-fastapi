@@ -151,7 +151,31 @@ from fastapi import FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-app = FastAPI(debug=True)
+tags_metadata = [
+    {"name": "OpenAI", "description": "AI-powered YouTube processing and image generation."},
+    {"name": "Notion", "description": "Convenience endpoints for saving AI output to Notion."},
+    {"name": "Images", "description": "Image upload, detection, and moderation workflows."},
+    {"name": "Amazon S3", "description": "File storage operations backed by Amazon S3."},
+    {"name": "MongoDB", "description": "Image metadata operations in MongoDB."},
+    {"name": "PostgreSQL", "description": "Image metadata operations in PostgreSQL."},
+    {"name": "SQL Server", "description": "Image metadata operations in SQL Server."},
+    {"name": "Database Status", "description": "Backend database configuration and health."},
+    {"name": "Datadog", "description": "Datadog events and alerting helpers."},
+    {"name": "Health", "description": "Liveness and readiness-style checks."},
+    {"name": "Diagnostics", "description": "Debug, profiling, and test utilities."},
+    {"name": "Utilities", "description": "Sample helper endpoints and JSONPlaceholder demo."},
+    {"name": "General", "description": "General purpose endpoints."},
+]
+
+app = FastAPI(
+    debug=True,
+    title="FastAPI Image Service",
+    description="Demo service for image processing, AI summarization, and observability.",
+    version=APP_VERSION,
+    openapi_tags=tags_metadata,
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
 
 # Now import application modules (after patching)
 from src.amazon import *
@@ -224,7 +248,7 @@ class Post(BaseModel):
     body: str
     userId: int
 
-@app.get("/images")
+@app.get("/images", tags=["Images"])
 async def get_all_images(backend: str = "mongo"):
     """
     Retrieve all images from the specified backend.
@@ -246,7 +270,7 @@ async def get_all_images(backend: str = "mongo"):
         raise CustomError("Invalid backend specified")
     return images
 
-@app.post("/add_image", status_code=201)
+@app.post("/add_image", status_code=201, tags=["Images"])
 async def add_photo(file: UploadFile, backend: str = "mongo"):
     """
     Upload an image to Amazon S3 and store metadata in the specified backend.
@@ -515,7 +539,7 @@ async def add_photo(file: UploadFile, backend: str = "mongo"):
     
     return response_data
 
-@app.delete("/delete_image/{id}", status_code=201)
+@app.delete("/delete_image/{id}", status_code=201, tags=["Images"])
 async def delete_image(id, backend: str = "mongo"):
     """
     Delete an image from the specified backend and Amazon S3.
@@ -584,7 +608,7 @@ async def delete_image(id, backend: str = "mongo"):
     
     return {"message": f"Image {id} successfully deleted"}
 
-@app.post("/create_post")
+@app.post("/create_post", tags=["Utilities"])
 @tracer.wrap()
 async def create_post(post: Post):
     with tracer.trace("create_post_request"):
@@ -599,7 +623,7 @@ async def create_post(post: Post):
             )
             return response.json()
 
-@app.get("/")
+@app.get("/", tags=["General"])
 async def root():
     """
     Root endpoint of the FastAPI application.
@@ -609,7 +633,7 @@ async def root():
     """
     return {"message": "Welcome to FastAPI!"}
 
-@app.get("/health")
+@app.get("/health", tags=["Health"])
 async def health_check():
     """
     Health check endpoint for deployment verification.
@@ -630,7 +654,7 @@ async def health_check():
     }
 
 
-@app.get("/test-sentry-logs")
+@app.get("/test-sentry-logs", tags=["Diagnostics"])
 async def test_sentry_logs():
     """
     Test endpoint to demonstrate Sentry structured logging.
@@ -677,7 +701,7 @@ async def test_sentry_logs():
     }
 
 
-@app.get("/sentry-diagnostics")
+@app.get("/sentry-diagnostics", tags=["Diagnostics"])
 async def sentry_diagnostics():
     """
     Diagnostic endpoint to check Sentry configuration in the running container.
@@ -760,7 +784,7 @@ async def sentry_diagnostics():
     return diagnostics
 
 
-@app.get("/test-sqlserver")
+@app.get("/test-sqlserver", tags=["Diagnostics"])
 async def test_sqlserver_debug():
     """
     Test SQL Server connection and operations for debugging.
@@ -786,7 +810,7 @@ async def test_sqlserver_debug():
             "results": {"connection": False, "errors": [str(e)]}
         }
 
-@app.get("/timeout-test")
+@app.get("/timeout-test", tags=["Diagnostics"])
 @tracer.wrap()
 async def timeout_test(timeout: int = 0):
     """
@@ -988,25 +1012,3 @@ def _mark_span_traceback(span):
             span_traceback()
         except Exception:
             pass
-
-# Add a /save-youtube-to-notion endpoint that's just a shortcut for the summarize-youtube endpoint with save_to_notion=True
-@app.post("/api/v1/save-youtube-to-notion", tags=["Notion"])
-async def save_youtube_to_notion(
-    request: YouTubeRequest
-):
-    """
-    Save a YouTube video summary to Notion.
-    This is a convenience endpoint that sets save_to_notion=True automatically.
-
-    - **url**: YouTube video URL (required)
-    - **instructions**: Optional custom instructions for the summarization
-    """
-    # Force save_to_notion to be True
-    modified_request = YouTubeRequest(
-        url=request.url,
-        instructions=request.instructions,
-        save_to_notion=True
-    )
-    
-    # Reuse the existing endpoint logic
-    return await summarize_youtube_video(modified_request)

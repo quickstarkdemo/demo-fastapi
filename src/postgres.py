@@ -44,7 +44,7 @@ except Exception as e:
     conn = None  # Initialize conn to None so later code can check if it's None
 
 # Create a new router for Postgres Routes
-router_postgres = APIRouter()
+router_postgres = APIRouter(tags=["PostgreSQL"])
 
 # PostgreSQL connection parameters logged above during connection attempt
 

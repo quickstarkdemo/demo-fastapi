@@ -115,7 +115,7 @@ def get_mongo_collection():
     return _collection
 
 # Create a new router for MongoDB Routes
-router_mongo = APIRouter()
+router_mongo = APIRouter(tags=["MongoDB"])
 
 @router_mongo.get(path="/get-image-mongo/{id}")
 async def get_one_mongo(id: str):
