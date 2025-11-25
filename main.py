@@ -13,12 +13,24 @@ logger = logging.getLogger(__name__)
 logger.info("Logging configured.")
 
 # Set environment variables before any Datadog imports
-os.environ["DD_LLMOBS_ML_APP"] = "youtube-summarizer"
-os.environ["DD_LLMOBS_EVALUATORS"] = "ragas_faithfulness,ragas_context_precision,ragas_answer_relevancy"
+def configure_llmobs():
+    """
+    Configure LLM Observability evaluators only if dependencies are present.
+    Avoids startup crashes when ragas is not installed in the runtime image.
+    """
+    os.environ["DD_LLMOBS_ML_APP"] = "youtube-summarizer"
+    try:
+        import ragas  # noqa: F401
+        os.environ["DD_LLMOBS_EVALUATORS"] = "ragas_faithfulness,ragas_context_precision,ragas_answer_relevancy"
+        logger.info("LLM Observability evaluators enabled (ragas installed).")
+        return True
+    except ImportError:
+        os.environ.pop("DD_LLMOBS_EVALUATORS", None)
+        logger.warning("LLM Observability evaluators disabled: ragas not installed.")
+        return False
 
-#Logger Info
-logger.info(f"Set LLM Observability app name: {os.environ['DD_LLMOBS_ML_APP']}")
-logger.info(f"Set LLM Observability evaluators: {os.environ['DD_LLMOBS_EVALUATORS']}")
+LLMOBS_ENABLED = configure_llmobs()
+logger.info(f"Set LLM Observability app name: {os.environ.get('DD_LLMOBS_ML_APP')}")
 
 # Load environment variables
 from dotenv import load_dotenv

@@ -10,7 +10,7 @@ import psycopg
 from dotenv import load_dotenv
 from fastapi import APIRouter, Response, encoders
 from pydantic import BaseModel
-from ddtrace import Pin
+from ddtrace.pin import Pin
 import logging
 
 # Set up logging
