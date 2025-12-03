@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 router_gemini = APIRouter(tags=["Gemini"])
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-DEFAULT_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "imagen-3.5-flash")
+# Align default to the doc’s primary model (Nano Banana): gemini-2.5-flash-image
+DEFAULT_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
 
 
 class GeminiImageRequest(BaseModel):
@@ -58,14 +59,23 @@ def _parse_size(size: str) -> Tuple[int, int]:
 def _extract_image_payload(data: dict) -> Tuple[str, str]:
     """
     Extract base64 image payload and mime type from Gemini image response.
-    Supports both the inline_data format and a minimal images array fallback.
+    Supports both inlineData (camelCase) and inline_data (legacy) plus a minimal images array fallback.
     """
     try:
         candidates = data.get("candidates", [])
         parts = candidates[0]["content"]["parts"]
-        inline_data = next((p.get("inline_data") for p in parts if "inline_data" in p), None)
+        inline_data = None
+        for p in parts:
+            if "inlineData" in p:
+                inline_data = p.get("inlineData")
+                break
+            if "inline_data" in p:
+                inline_data = p.get("inline_data")
+                break
+
         if inline_data and "data" in inline_data:
-            return inline_data.get("data"), inline_data.get("mime_type", "image/png")
+            mime = inline_data.get("mimeType") or inline_data.get("mime_type") or "image/png"
+            return inline_data.get("data"), mime
     except Exception as e:
         logger.debug("Inline data parse failed: %s", e)
 
@@ -81,6 +91,50 @@ def _extract_image_payload(data: dict) -> Tuple[str, str]:
     raise ValueError("Could not parse image payload from Gemini response")
 
 
+def _build_payload(model_name: str, prompt: str, width: int, height: int) -> Tuple[str, dict]:
+    """
+    Build the appropriate endpoint URL and payload based on the model.
+    - Imagen models use the imagegeneration:generate endpoint.
+    - Other Gemini models (e.g., gemini-3-pro-image-preview) use generateContent.
+    """
+    # Imagen family uses the dedicated imagegeneration endpoint
+    if model_name.startswith("imagen-"):
+        url = "https://generativelanguage.googleapis.com/v1beta/models/imagegeneration:generate"
+        payload = {
+            "model": model_name,
+            "prompt": {"text": prompt},
+            "imageGenerationConfig": {
+                "sampleCount": 1,
+                "height": height,
+                "width": width,
+            },
+        }
+        return url, payload
+
+    # Gemini v1/v2/v3 image-capable models use generateContent
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+    payload = {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [
+                    {"text": prompt}
+                ],
+            }
+        ],
+        # Hint that we want an image response
+        "generationConfig": {
+            # Match doc guidance: explicitly request image
+            "responseModalities": ["IMAGE"],
+            "imageConfig": {
+                "aspectRatio": f"{width}:{height}",
+            },
+        },
+        "safetySettings": [],
+    }
+    return url, payload
+
+
 @router_gemini.post("/gemini-generate-image", response_model=GeminiImageResponse)
 async def generate_gemini_image(request: GeminiImageRequest):
     """
@@ -93,21 +147,17 @@ async def generate_gemini_image(request: GeminiImageRequest):
     model_name = request.model or DEFAULT_MODEL
     width, height = _parse_size(request.size or "1024x1024")
 
-    payload = {
-        "model": model_name,
-        "prompt": {"text": request.prompt},
-        "imageGenerationConfig": {
-            "sampleCount": 1,
-            "height": height,
-            "width": width,
-        },
-    }
-
-    url = "https://generativelanguage.googleapis.com/v1beta/models/imagegeneration:generate"
+    url, payload = _build_payload(model_name, request.prompt, width, height)
 
     try:
         async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(url, params={"key": api_key}, json=payload)
+            # Use header as in Google’s examples; keep query param for compatibility
+            resp = await client.post(
+                url,
+                params={"key": api_key},
+                headers={"x-goog-api-key": api_key},
+                json=payload,
+            )
             if resp.status_code >= 400:
                 text = resp.text
                 logger.error("Gemini API error %s: %s", resp.status_code, text)
