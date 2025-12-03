@@ -49,6 +49,8 @@ FastAPI app for image ingestion (S3 + Rekognition + Mongo/Postgres/SQL Server st
   - `POST /api/v1/summarize-youtube` – Summarize a single video (see `examples/youtube_batch_usage.py` for payloads).
   - `POST /api/v1/batch-summarize-youtube` – Batch processing strategies for multiple URLs.
   - `POST /api/v1/save-youtube-to-notion` – Persist summaries to a Notion database.
+- **Gemini**
+  - `POST /api/v1/gemini-generate-image` – Generate an image with Gemini (Imagen 3.5 Flash by default); returns base64 + MIME type.
 - **Datadog utilities**
   - `GET /datadog-hello`, `POST /datadog-event`, `GET /datadog-events`
   - `POST /app-event/{event_type}`, `POST /track-api-request`, `POST /bug-detection-event`
@@ -64,6 +66,7 @@ FastAPI app for image ingestion (S3 + Rekognition + Mongo/Postgres/SQL Server st
 - Observability is set via `OBSERVABILITY_PROVIDER` (`datadog` default, `sentry`, or `disabled`). Datadog tags use `DD_SERVICE`, `DD_ENV`, `DD_VERSION`. Sentry mirrors these with `SENTRY_*`.
 - AWS/SES, database, and OpenAI credentials are read from `.env` at startup. The app loads `.env` from the repo root (`APP_ROOT/.env`).
 - See `env.example` for every option, including profiling and Datadog DBM flags.
+- Gemini image generation requires `GEMINI_API_KEY` (and optionally `GEMINI_IMAGE_MODEL` to override the default `imagen-3.5-flash`).
 
 ## Development & Testing
 - Run tests with Datadog visibility: `./scripts/test.sh fast` or `./scripts/test.sh unit -v`.
@@ -83,6 +86,7 @@ FastAPI app for image ingestion (S3 + Rekognition + Mongo/Postgres/SQL Server st
 ## Project Layout
 - Application entrypoint: `main.py`
 - Core services: `src/amazon.py`, `src/openai_service.py`, `src/datadog.py`, `src/mongo.py`, `src/postgres.py`, `src/sqlserver.py`, `src/database_status.py`
+- Gemini image generation: `src/gemini_service.py`
 - Observability providers: `src/observability/`
 - SQL schemas: `sql/`
 - Examples: `examples/youtube_batch_usage.py`

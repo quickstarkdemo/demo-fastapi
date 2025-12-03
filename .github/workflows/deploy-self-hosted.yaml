@@ -285,6 +285,7 @@ jobs:
             AMAZON_KEY_ID=dummy-key-for-testing \
             AMAZON_KEY_SECRET=dummy-key-for-testing \
             AMAZON_S3_BUCKET=dummy-bucket-for-testing \
+            GEMINI_API_KEY=dummy-key-for-testing \
             BUG_REPORT_EMAIL=test@example.com \
             DD_TRACE_ENABLED=false \
             DD_PROFILING_ENABLED=false \
@@ -457,6 +458,7 @@ jobs:
             -e SQLSERVERPW="${{ secrets.SQLSERVERPW }}" \
             -e SQLSERVERDB="${{ secrets.SQLSERVERDB }}" \
             -e OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+            -e GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}" \
             -e DD_API_KEY="${{ secrets.DD_API_KEY }}" \
             -e DD_APP_KEY="${{ secrets.DD_APP_KEY }}" \
             -e SES_REGION="${{ secrets.SES_REGION }}" \

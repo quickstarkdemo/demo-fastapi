@@ -198,6 +198,7 @@ from src.openai_service import router_openai, YouTubeRequest, summarize_youtube_
 from src.datadog import *  # Import the new Datadog module
 from src.datadog import app_event, bug_detection_event  # Explicit imports for error tracking
 from src.database_status import router as router_database_status  # Database status endpoints
+from src.gemini_service import router_gemini  # Gemini image generation
 
 # Define CORS origins
 origins = [
@@ -244,6 +245,8 @@ try:
     logger.info("Datadog router included.")
     app.include_router(router_database_status, prefix="/api/v1", tags=["Database Status"])
     logger.info("Database status router included.")
+    app.include_router(router_gemini, prefix="/api/v1", tags=["Gemini"])
+    logger.info("Gemini router included.")
 except Exception as e:
     logger.error(f"Error including routers: {e}")
 
