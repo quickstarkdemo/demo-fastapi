@@ -1,592 +1,90 @@
-# FastAPI Image Processing & YouTube Summarization Service
-
-A production-ready FastAPI application that combines intelligent image processing with AI-powered YouTube video summarization. Features comprehensive monitoring with Datadog integration, multi-database support (MongoDB, PostgreSQL, SQL Server), and flexible deployment options including Kubernetes and Synology NAS.
-
-## 📋 Prerequisites
-
-- Python 3.9 or higher
-- Docker (optional, for containerized deployment)
-- PostgreSQL, MongoDB, or SQL Server (at least one database)
-- AWS Account (for S3, Rekognition, and SES)
-- OpenAI API Key (for AI features)
-- Datadog Account (optional, for monitoring)
-- Notion Account (optional, for YouTube summaries storage)
-- Sentry DSN and associated parameters (options, for testing)
-- Remember to toggle the observability provider
-
-## 🚀 Features
-
-### **Image Processing & Storage**
-- **AWS S3 Integration** - Secure image upload and storage
-- **Amazon Rekognition** - Automated label detection, text extraction, and content moderation
-- **Multi-Database Support** - Store metadata in MongoDB, PostgreSQL, or SQL Server
-- **Content Safety** - Automatic detection of questionable content and "bug" images
-- **Smart Error Detection** - Identifies images containing error text for debugging
-- **Amazon SES Integration** - Email notifications for error reporting (replaced SendGrid)
-
-### **YouTube Video Analysis**
-- **AI-Powered Summarization** - Uses OpenAI to generate intelligent video summaries
-- **Batch Processing** - Process multiple YouTube videos simultaneously with configurable strategies
-- **Transcript Processing** - Extracts and processes YouTube video transcripts with fallback mechanisms
-- **Notion Integration** - Automatically save video summaries to Notion databases
-- **Metadata Extraction** - Retrieves video details including title, channel, and publication date
-- **Multiple URL Support** - Accept various YouTube URL formats (standard, shorts, mobile)
-
-### **Comprehensive Monitoring**
-- **Datadog APM** - Full application performance monitoring with distributed tracing
-- **LLM Observability** - Track AI model performance and costs
-- **Custom Event Tracking** - Content moderation alerts, bug detection events
-- **Runtime Profiling** - CPU and memory performance analysis
-- **Health Monitoring** - Application health checks and uptime tracking
-
-### **Production-Ready Architecture**
-- **Docker Containerization** - Multi-stage builds with Python 3.9 slim base
-- **Kubernetes Support** - Ready for container orchestration with manifest files
-- **GitHub Actions CI/CD** - Automated testing, building, and deployment pipeline
-- **Flexible Deployment** - Support for Docker, Kubernetes, Synology NAS, and cloud platforms
-- **Environment Management** - Separate configurations for dev/staging/production
-- **Database Migration Tools** - SQL scripts for easy database setup and schema management
-
-## 📋 API Endpoints
-
-### **Image Management**
-- `GET /images?backend=mongo|postgres|sqlserver` - Retrieve all stored images
-- `POST /add_image?backend=mongo|postgres|sqlserver` - Upload and process images
-- `DELETE /delete_image/{id}?backend=mongo|postgres|sqlserver` - Remove images and metadata
-
-### **AWS Services**
-- `POST /api/v1/upload-image-amazon/` - Upload image directly to Amazon S3
-- `DELETE /api/v1/delete-one-s3/{key}` - Delete single object from S3
-- `DELETE /api/v1/delete-all-s3` - Delete all objects from S3
-
-### **YouTube Processing**
-- `POST /api/v1/summarize-youtube` - Generate AI summary of a single YouTube video
-- `POST /api/v1/batch-summarize-youtube` - Process multiple YouTube videos with batch strategies
-- `POST /api/v1/save-youtube-to-notion` - Save video summaries directly to Notion
-
-### **OpenAI Services**
-- `GET /api/v1/openai-hello` - Service health check
-- `GET /api/v1/openai-gen-image/{prompt}` - Generate images using DALL-E 3
-
-### **Database Operations**
-- `GET /api/v1/mongo/get-image-mongo/{id}` - Retrieve image from MongoDB
-- `DELETE /api/v1/mongo/delete-all-mongo/{key}` - Delete all items by key from MongoDB
-- `GET /api/v1/postgres/get-image-postgres/{id}` - Retrieve image from PostgreSQL
-- `GET /api/v1/sqlserver/get-image-sqlserver/{id}` - Retrieve image from SQL Server
-
-### **Datadog Monitoring**
-- `GET /datadog-hello` - Datadog integration health check
-- `POST /datadog-event` - Send custom events to Datadog
-- `GET /datadog-events` - Retrieve Datadog events
-- `POST /app-event/{event_type}` - Track application-specific events
-- `POST /track-api-request` - Log API request metrics
-- `POST /bug-detection-event` - Report bug detection events
-
-### **System & Monitoring**
-- `GET /` - Root endpoint with welcome message
-- `GET /health` - Application health status with detailed service checks
-- `GET /test-sqlserver` - Test SQL Server connection
-- `GET /timeout-test?timeout=N` - Performance testing endpoint
-- `POST /create_post` - Demo endpoint for external API integration
-
-## 🛠️ Quick Start
-
-### **Local Development**
-
-1. **Clone the repository**:
-   ```bash
-   git clone <repository-url>
-   cd demo-fastapi
-   ```
-
-2. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Configure environment**:
-   ```bash
-   cp env.example .env
-   # Edit .env with your development credentials
-   ```
-
-4. **Set up databases (optional)**:
-   ```bash
-   # Interactive database setup
-   ./scripts/setup-databases.sh
-   ```
-
-5. **Run the application**:
-   ```bash
-   python main.py
-   ```
-
-   The API will be available at `http://localhost:8080`
-
-### **Docker Development**
-
-1. **Build and run with Docker**:
-   ```bash
-   # Basic build
-   docker build -t fastapi-app .
-   docker run -p 8080:8080 --env-file .env fastapi-app
-   ```
-
-2. **Using the build script**:
-   ```bash
-   # Local development with auto-run
-   ./scripts/build.sh --local --run
-   
-   # Build without cache
-   ./scripts/build.sh --no-cache --local --run
-   
-   # Clean existing containers and rebuild
-   ./scripts/build.sh --clean --run
-   ```
-
-3. **Docker Compose**:
-   ```bash
-   docker-compose up
-   ```
-
-### **Alternative Container Runtimes**
-
-```bash
-# Using Podman
-./scripts/build.sh --podman --run
-
-# Using Rancher Desktop
-./scripts/build.sh --rancher --run
-```
-
-## ⚙️ Configuration
-
-### **Required Environment Variables**
-
-```bash
-# OpenAI Configuration
-OPENAI_API_KEY=sk-your-openai-api-key
-
-# AWS Services (S3, Rekognition, SES)
-AMAZON_KEY_ID=your-aws-access-key-id
-AMAZON_KEY_SECRET=your-aws-secret-access-key
-AMAZON_S3_BUCKET=your-s3-bucket-name
-SES_REGION=us-west-2
-SES_FROM_EMAIL=your-verified-email@domain.com
-
-# Database Configuration
-# MongoDB (optional)
-MONGO_CONN=mongodb://your-mongodb-connection
-MONGO_USER=your-mongo-username
-MONGO_PW=your-mongo-password
-
-# PostgreSQL (optional)
-PGHOST=your-postgres-host
-PGPORT=5432
-PGDATABASE=your-database-name
-PGUSER=your-postgres-username
-PGPASSWORD=your-postgres-password
-
-# SQL Server (optional)
-SQLSERVER_ENABLED=true  # Set to false to disable
-SQLSERVERHOST=your-sqlserver-host
-SQLSERVERPORT=1433
-SQLSERVERDB=your-database-name
-SQLSERVERUSER=your-sqlserver-username
-SQLSERVERPW=your-sqlserver-password
-
-# Notion Integration (optional)
-NOTION_API_KEY=secret_your-notion-key
-NOTION_DATABASE_ID=your-notion-database-id
-
-# Datadog Monitoring
-DD_API_KEY=your-datadog-api-key
-DD_APP_KEY=your-datadog-app-key
-DD_AGENT_HOST=192.168.1.100  # Your Datadog agent host
-DD_TRACE_AGENT_PORT=8126
-DD_PROFILING_ENABLED=true
-DD_DBM_PROPAGATION_MODE=full  # Enable DB monitoring
-
-# LLM Observability
-DD_LLMOBS_ENABLED=true
-DD_LLMOBS_ML_APP=youtube-summarizer
-DD_LLMOBS_EVALUATORS=ragas_faithfulness,ragas_context_precision,ragas_answer_relevancy
-
-# Application Configuration
-DD_SERVICE=fastapi-app
-DD_ENV=production
-DD_VERSION=1.0
-BUG_REPORT_EMAIL=your-email@domain.com
-
-# SonarQube Integration (optional)
-SONAR_TOKEN=your-sonarqube-token
-SONAR_HOST_URL=https://your-sonarqube-server.com
-```
-
-### **Optional Features**
-
-The application gracefully handles missing services:
-- **Databases**: MongoDB, PostgreSQL, and SQL Server can be used independently or together
-- **Notion Integration**: YouTube summaries work without Notion
-- **Datadog**: Monitoring is optional for development
-- **Amazon SES**: Email notifications are optional (fallback available)
-- **SonarQube**: Code quality analysis (configured in `sonar-project.properties`)
-
-### **Database Management**
-
-#### Toggle SQL Server
-```bash
-# Enable SQL Server
-SQLSERVER_ENABLED=true
-
-# Disable SQL Server (faster startup, no SQL Server dependency)
-SQLSERVER_ENABLED=false
-```
-
-#### Check Database Status
-```bash
-# View status of all databases
-curl http://localhost:8000/api/v1/database-status
-
-# View configuration (without passwords)
-curl http://localhost:8000/api/v1/database-config
-
-# Test SQL Server connection specifically
-curl http://localhost:8000/test-sqlserver
-```
-
-#### Use Different Backends
-```bash
-# Get images from PostgreSQL
-curl "http://localhost:8000/images?backend=postgres"
-
-# Get images from MongoDB
-curl "http://localhost:8000/images?backend=mongo"
-
-# Get images from SQL Server
-curl "http://localhost:8000/images?backend=sqlserver"
-```
-
-See [`docs/DATABASE_CONFIGURATION.md`](docs/DATABASE_CONFIGURATION.md) for complete database configuration guide.
-
-## 🐳 Docker Configuration
-
-### **Dockerfile Features**
-- **Multi-stage build** for optimal image size
-- **Python 3.9 slim** base image
-- **Security hardening** with non-root user (PUID/PGID)
-- **Environment optimization** for container runtime
-- **Health checks** for container orchestration
-
-### **Build Options**
-```bash
-# Standard build for production
-docker build -t fastapi-app .
-
-# Platform-specific builds
-docker build --platform linux/amd64 -t fastapi-app .
-
-# No-cache build
-docker build --no-cache -t fastapi-app .
-```
-
-### **Synology NAS Deployment**
-```bash
-# Build image for Synology DS923+
-./scripts/build.sh
-
-# This creates a .tar file on your Desktop for import into Synology Container Manager
-# Port mapping: 9000:8080
-# Environment: Use .env.production values
-```
-
-## 💡 Usage Examples
-
-### **Batch YouTube Processing**
-```python
-# See examples/youtube_batch_usage.py for complete examples
-import asyncio
-from examples.youtube_batch_usage import YouTubeBatchClient
-
-async def batch_process_videos():
-    client = YouTubeBatchClient()
-    
-    # Process multiple videos
-    urls = [
-        "https://youtube.com/watch?v=video1",
-        "https://youtube.com/watch?v=video2",
-        "https://youtube.com/watch?v=video3"
-    ]
-    
-    result = await client.process_batch(
-        urls=urls,
-        strategy="parallel_individual",
-        save_to_notion=True,
-        max_parallel=3
-    )
-    
-    print(f"Processed {len(result['results'])} videos")
-
-asyncio.run(batch_process_videos())
-```
-
-### **Database Setup**
-```bash
-# Interactive database setup wizard
-./scripts/setup-databases.sh
-
-# Quick PostgreSQL setup
-psql -h localhost -U username -d database_name -f sql/quick_setup_postgres.sql
-
-# Fix and setup PostgreSQL
-psql -h localhost -U username -d database_name -f sql/fix_and_setup_postgres.sql
-
-# SQL Server setup
-sqlcmd -S localhost -U sa -d database_name -i sql/sqlserver_schema.sql
-```
-
-### **Secret Management**
-```bash
-# Set up GitHub Secrets for CI/CD
-./scripts/setup-secrets.sh
-
-# Clear sensitive environment variables
-./scripts/clear-secrets.sh
-```
-
-## 🧪 Testing
-
-### **Run Tests**
-```bash
-# All tests
-pytest
-
-# With coverage
-pytest --cov=src
-
-# With Datadog Test Optimization (CI)
-pytest --ddtrace -v
-
-# Specific test files
-pytest tests/test_basic.py
-pytest tests/test_simple.py
-pytest tests/mongo_test.py
-
-# Run test script
-./scripts/test.sh
-```
-
-### **YouTube URL Testing**
-```bash
-# Test YouTube URL processing and transcript retrieval
-python test_youtube_urls.py
-```
-This utility tests:
-- Video ID extraction from different URL formats
-- Transcript retrieval functionality
-- Full video processing pipeline
-
-### **Test Environment**
-Tests are designed to gracefully handle missing external services:
-- **Mock external APIs** when credentials are unavailable
-- **Skip integration tests** for unconfigured services
-- **Isolated unit tests** for core functionality
-
-## 📁 Project Structure
-
-```
-demo-fastapi/
-├── main.py                     # FastAPI application with Datadog integration
-├── requirements.txt            # Python dependencies
-├── Dockerfile                  # Multi-stage container build
-├── docker-compose.yml          # Local development services
-├── env.example                 # Environment variable template
-├── pytest.ini                # Test configuration
-├── scripts/                   # Build and deployment automation
-│   ├── build.sh              # Multi-platform Docker builds
-│   ├── deploy.sh             # Production deployment with GitHub Secrets
-│   ├── setup-secrets.sh      # GitHub Secrets management
-│   ├── setup-databases.sh    # Database setup and migration helper
-│   ├── setup-runner.sh       # Self-hosted GitHub runner setup
-│   ├── setup-sonarqube-monitoring.sh # SonarQube Datadog monitoring
-│   ├── add-apm-to-sonarqube.sh      # Add APM to SonarQube
-│   └── test.sh               # Test automation
-├── src/                       # Application modules
-│   ├── amazon.py             # AWS S3, Rekognition, SES integration
-│   ├── mongo.py              # MongoDB operations
-│   ├── postgres.py           # PostgreSQL operations
-│   ├── sqlserver.py          # SQL Server operations
-│   ├── openai_service.py     # OpenAI API integration
-│   ├── datadog.py            # Custom monitoring and events
-│   └── services/             # Additional service integrations
-│       ├── youtube_service.py          # Single video processing
-│       ├── youtube_batch_service.py    # Batch video processing
-│       ├── youtube_transcript_fallback.py # Transcript fallback handling
-│       └── notion_service.py           # Notion database integration
-├── tests/                     # Test suite
-│   ├── conftest.py           # Test configuration and fixtures
-│   ├── test_basic.py         # API endpoint tests
-│   ├── test_simple.py        # Unit tests
-│   └── mongo_test.py         # Database integration tests
-├── sql/                       # Database schemas and migrations
-│   ├── postgres_schema.sql   # PostgreSQL table definitions
-│   ├── sqlserver_schema.sql  # SQL Server table definitions
-│   └── *.sql                 # Migration and setup scripts
-├── examples/                  # Usage examples
-│   └── youtube_batch_usage.py # Batch processing examples
-├── docs/                      # Additional documentation
-│   ├── GMKTEC_MIGRATION.md   # GMKTec host migration guide
-│   ├── SQL_SERVER_SETUP.md   # SQL Server configuration guide
-│   └── YOUTUBE_BATCH_PROCESSING.md # YouTube batch processing guide
-├── .github/workflows/         # CI/CD pipelines
-│   ├── deploy.yaml           # GitHub-hosted deployment (manual)
-│   ├── deploy-self-hosted.yaml # Self-hosted runner deployment (auto)
-│   └── datadog-security.yml  # Datadog security scanning
-├── datadog-conf.d/           # Datadog monitoring configurations
-│   ├── docker.d/             # Docker container monitoring
-│   ├── sonarqube.d/          # SonarQube monitoring
-│   └── github_runner.yaml    # GitHub runner monitoring
-├── k8s-fastapi-app.yaml      # Kubernetes application manifest
-├── k8s-datadog-agent.yaml    # Kubernetes Datadog agent manifest
-├── docker-compose.sonarqube-with-apm.yml # SonarQube with APM config
-├── sonar-project.properties  # SonarQube project configuration
-├── runner.env.example        # GitHub runner environment template
-├── test_youtube_urls.py      # YouTube URL processing test utility
-├── static-analysis.datadog.yml # Datadog static analysis configuration
-└── tailscale-acl-example.json # Tailscale ACL configuration example
-```
-
-## 🔍 Key Application Features
-
-### **Image Processing Workflow**
-1. **Upload** - Images uploaded to AWS S3
-2. **Analysis** - Amazon Rekognition extracts labels, text, and checks content
-3. **Storage** - Metadata stored in MongoDB, PostgreSQL, or SQL Server
-4. **Monitoring** - Content moderation and error detection events sent to Datadog
-
-### **YouTube Processing Workflow**
-1. **URL Parsing** - Extract video ID from multiple YouTube URL formats
-2. **Transcript Retrieval** - Get video transcript with multiple fallback mechanisms
-3. **AI Summarization** - Generate summary using OpenAI GPT with custom instructions
-4. **Batch Processing** - Handle multiple videos with configurable parallel processing strategies
-5. **Optional Storage** - Save to Notion database with metadata and tags
-
-### **Monitoring & Observability**
-- **Request Tracing** - Every API call tracked with Datadog APM
-- **Error Detection** - Custom events for content moderation and bug detection
-- **Performance Metrics** - CPU, memory, and response time monitoring
-- **LLM Observability** - OpenAI usage tracking with RAGAS evaluators for model quality assessment
-- **Database Monitoring** - APM trace correlation with database queries (DBM)
-- **Runtime Profiling** - CPU and memory profiling for performance optimization
-- **Custom Events API** - Send application-specific events to Datadog
-- **Code Quality** - SonarQube analysis for bugs, vulnerabilities, and code smells
-- **Static Analysis** - Datadog and SonarQube code quality checks
-
-## 🚀 Deployment Options
-
-### **Docker (Local/Cloud)**
-```bash
-docker run -p 8080:8080 --env-file .env fastapi-app
-```
-
-### **Kubernetes**
-```bash
-kubectl apply -f k8s-fastapi-app.yaml
-kubectl apply -f k8s-datadog-agent.yaml
-```
-
-### **Synology NAS**
-1. Build image: `./scripts/build.sh`
-2. Transfer .tar file to Synology
-3. Import via Container Manager
-4. Configure port 9000:8080
-
-### **GitHub Actions CI/CD**
-The repository includes comprehensive CI/CD pipelines:
-- **Self-Hosted Runner** (`.github/workflows/deploy-self-hosted.yaml`) - Optimized for GMKTec local deployment
-- **GitHub-Hosted Runner** (`.github/workflows/deploy.yaml`) - Cloud-based fallback option (manual trigger only)
-- **Security Scanning** (`.github/workflows/datadog-security.yml`) - Static analysis and security checks
-- **Code Quality** - SonarQube integration for automated code analysis on every push
-- **Runner Setup Script** - Use `scripts/setup-runner.sh` for easy self-hosted runner configuration
-- **Runner Environment** - Configure with `runner.env.example` for Docker-based GitHub runner
-
-### **GMKTec Local Deployment**
-With the self-hosted runner on GMKTec, deployment is automatic on push to main:
-- Port 9000 for production
-- Local Docker deployment
-- No SSH or Tailscale needed
-
-#### Self-Hosted Runner Setup
-```bash
-# Quick setup for self-hosted runner
-cp runner.env.example .env.runner
-# Edit .env.runner with your GitHub token and Docker group ID (988 for GMKTec)
-
-# Run the setup script
-./scripts/setup-runner.sh
-
-# Choose option 2 to start the runner
-```
-
-For manual deployment:
-```bash
-# Using the deployment script
-./scripts/deploy.sh --local
-
-# Or trigger workflow manually
-gh workflow run deploy-self-hosted.yaml
-```
-
-## 📊 Monitoring Dashboard
-
-Access your monitoring dashboards:
-- **Datadog APM**: Distributed tracing and performance metrics
-- **Datadog LLM Observability**: Track AI model performance and costs
-- **SonarQube**: Code quality metrics at your configured SonarQube instance
-- **FastAPI Docs**: `http://localhost:8080/docs`
-- **ReDoc**: `http://localhost:8080/redoc`
-- **Health Check**: `http://localhost:8080/health`
-
-### **SonarQube Integration**
-The project is configured for SonarQube analysis:
-- Automatic analysis on every push (GitHub Actions)
-- Configured exclusions for test and migration files
-- Python 3.9-3.12 compatibility
-- Optional APM monitoring (see `docker-compose.sonarqube-with-apm.yml`)
-
-### **Infrastructure Monitoring**
-Datadog monitoring configurations available in `datadog-conf.d/`:
-- Docker container monitoring (`docker.d/`)
-- SonarQube monitoring via HTTP checks and JMX (`sonarqube.d/`)
-- GitHub runner process monitoring (`github_runner.yaml`)
-
-## 📖 Additional Documentation
-
-Detailed guides are available in the `docs/` directory:
-- **[GMKTec Migration Guide](docs/GMKTEC_MIGRATION.md)** - Detailed instructions for migrating to GMKTec host
-- **[SQL Server Setup Guide](docs/SQL_SERVER_SETUP.md)** - Complete SQL Server configuration and troubleshooting
-- **[YouTube Batch Processing Guide](docs/YOUTUBE_BATCH_PROCESSING.md)** - Advanced YouTube video processing strategies
-
-## 🔒 Security Features
-
-- **Environment Variable Management** - No secrets in code, comprehensive `.env` configuration
-- **CORS Configuration** - Controlled cross-origin access with configurable origins
-- **Content Moderation** - Automatic detection of inappropriate content using Amazon Rekognition
-- **Error Tracking** - Structured logging with Datadog integration for security monitoring
-- **Container Security** - Non-root user execution with PUID/PGID support
-- **Static Security Analysis** - Automated security scanning with Datadog's Python security rulesets
-- **Tailscale Support** - Optional secure network access for remote deployments
-- **OAuth Integration** - Secure authentication for CI/CD pipelines
-- **Local Deployment** - Self-hosted runner supports local deployment without network exposure
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass
-5. Submit a pull request
-
-## 📄 License
-
-See [LICENSE.md](LICENSE.md) for license information.
+# FastAPI Image & Video Service
+
+FastAPI app for image ingestion (S3 + Rekognition + Mongo/Postgres/SQL Server storage) and OpenAI-powered YouTube summarization with optional Notion persistence. Observability is pluggable: Datadog by default, Sentry or a noop provider when needed.
+
+## Quick Start
+- Requirements: Python 3.12+, Docker (optional), AWS credentials for S3/Rekognition/SES, OpenAI API key, optional Mongo/Postgres/SQL Server, optional Datadog or Sentry credentials.
+- Install deps:
+  ```bash
+  python -m venv .venv && source .venv/bin/activate
+  pip install -r requirements.txt
+  cp env.example .env
+  ```
+- Set the minimum env needed for the features you plan to use:
+  - Observability: `OBSERVABILITY_PROVIDER=datadog|sentry|disabled`
+  - OpenAI: `OPENAI_API_KEY`
+  - AWS: `AMAZON_KEY_ID`, `AMAZON_KEY_SECRET`, `AMAZON_S3_BUCKET`, `SES_REGION`, `SES_FROM_EMAIL`
+  - Databases (pick what you use): `MONGO_CONN`/`MONGO_USER`/`MONGO_PW`, `PGHOST`/`PGPORT`/`PGDATABASE`/`PGUSER`/`PGPASSWORD`, `SQLSERVERHOST`/`SQLSERVERPORT`/`SQLSERVERDB`/`SQLSERVERUSER`/`SQLSERVERPW`, plus `SQLSERVER_ENABLED=true|false`
+  - Optional: `NOTION_API_KEY`, `NOTION_DATABASE_ID`, `DD_API_KEY`, `DD_APP_KEY`, `BUG_REPORT_EMAIL`
+- Run the app (mirrors the Docker entrypoint):
+  ```bash
+  python -m hypercorn main:app --bind 0.0.0.0:8080
+  # or uvicorn main:app --reload
+  ```
+- Docker:
+  ```bash
+  docker build -t fastapi-app .
+  docker run -p 8080:8080 --env-file .env fastapi-app
+  ```
+- Docs live at `http://localhost:8080/docs` and `http://localhost:8080/redoc`.
+
+## API Map
+- **Images**
+  - `GET /images?backend=mongo|postgres|sqlserver` – List stored images.
+  - `POST /add_image?backend=mongo|postgres|sqlserver` – Upload an image (S3 + Rekognition) and persist metadata.
+  - `DELETE /delete_image/{id}?backend=...` – Remove image and metadata.
+- **Amazon S3**
+  - `POST /api/v1/upload-image-amazon/` – Upload a file directly to S3.
+  - `DELETE /api/v1/delete-one-s3/{key}` – Delete a single object.
+  - `DELETE /api/v1/delete-all-s3` – Delete all objects in the configured bucket.
+- **Database-specific helpers**
+  - `GET /api/v1/mongo/get-image-mongo/{id}`
+  - `DELETE /api/v1/mongo/delete-all-mongo/{key}`
+  - `GET /api/v1/postgres/get-image-postgres/{id}`
+  - `GET /api/v1/sqlserver/get-image-sqlserver/{id}`
+  - `GET /api/v1/database-status` and `GET /api/v1/database-config` – Live backend status/config snapshots.
+- **OpenAI & Notion**
+  - `GET /api/v1/openai-hello` – Sanity check.
+  - `GET /api/v1/openai-gen-image/{search}` – DALL·E 3 image generation.
+  - `POST /api/v1/summarize-youtube` – Summarize a single video (see `examples/youtube_batch_usage.py` for payloads).
+  - `POST /api/v1/batch-summarize-youtube` – Batch processing strategies for multiple URLs.
+  - `POST /api/v1/save-youtube-to-notion` – Persist summaries to a Notion database.
+- **Datadog utilities**
+  - `GET /datadog-hello`, `POST /datadog-event`, `GET /datadog-events`
+  - `POST /app-event/{event_type}`, `POST /track-api-request`, `POST /bug-detection-event`
+- **Diagnostics & General**
+  - `GET /health` – Includes service/env/version and observability provider info.
+  - `GET /test-sqlserver` – Debug the SQL Server connection.
+  - `GET /timeout-test?timeout=N` – Force a slow response for profiling.
+  - `GET /test-sentry-logs`, `GET /sentry-diagnostics` – Sentry-only debugging endpoints.
+  - `POST /create_post` – Sample JSONPlaceholder proxy.
+  - `GET /` – Basic welcome message.
+
+## Configuration Cheatsheet
+- Observability is set via `OBSERVABILITY_PROVIDER` (`datadog` default, `sentry`, or `disabled`). Datadog tags use `DD_SERVICE`, `DD_ENV`, `DD_VERSION`. Sentry mirrors these with `SENTRY_*`.
+- AWS/SES, database, and OpenAI credentials are read from `.env` at startup. The app loads `.env` from the repo root (`APP_ROOT/.env`).
+- See `env.example` for every option, including profiling and Datadog DBM flags.
+
+## Development & Testing
+- Run tests with Datadog visibility: `./scripts/test.sh fast` or `./scripts/test.sh unit -v`.
+- Direct pytest works too: `pytest`, `pytest --cov=src`.
+- Helpful scripts live in `scripts/README.md`:
+  - `build.sh` for container builds, `test.sh` for tests.
+  - `setup-databases.sh` to load SQL schemas.
+  - `setup-secrets.sh` / `clear-secrets.sh` for GitHub Actions secrets.
+  - `deploy.sh` for the guided deployment flow.
+  - `test-sentry.sh` and `setup-sonarqube-monitoring.sh` for observability checks.
+
+## Deployment Notes
+- The Docker image uses Hypercorn with `CMD ["python", "-m", "hypercorn", "main:app", "--bind", "0.0.0.0:8080"]`.
+- GitHub Actions workflows live in `.github/workflows/` (self-hosted and GitHub-hosted variants).
+- For manual pushes to production or secret refresh, use `./scripts/deploy.sh [env-file] [--force]`.
+
+## Project Layout
+- Application entrypoint: `main.py`
+- Core services: `src/amazon.py`, `src/openai_service.py`, `src/datadog.py`, `src/mongo.py`, `src/postgres.py`, `src/sqlserver.py`, `src/database_status.py`
+- Observability providers: `src/observability/`
+- SQL schemas: `sql/`
+- Examples: `examples/youtube_batch_usage.py`
+- Docs: `docs/`
+- Tooling: `scripts/`, `.github/workflows/`, `Dockerfile`
