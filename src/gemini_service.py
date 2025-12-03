@@ -108,7 +108,13 @@ async def generate_gemini_image(request: GeminiImageRequest):
     try:
         async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.post(url, params={"key": api_key}, json=payload)
-            resp.raise_for_status()
+            if resp.status_code >= 400:
+                text = resp.text
+                logger.error("Gemini API error %s: %s", resp.status_code, text)
+                raise HTTPException(
+                    status_code=resp.status_code,
+                    detail=f"Gemini API error ({resp.status_code}): {text[:400]}",
+                )
             data = resp.json()
 
         image_b64, mime_type = _extract_image_payload(data)
@@ -121,9 +127,6 @@ async def generate_gemini_image(request: GeminiImageRequest):
         )
     except HTTPException:
         raise
-    except httpx.HTTPStatusError as exc:
-        logger.error("Gemini API error: %s - %s", exc.response.status_code, exc.response.text)
-        raise HTTPException(status_code=exc.response.status_code, detail="Gemini API error")
     except Exception as exc:
         logger.error("Gemini image generation failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail="Gemini image generation failed")
