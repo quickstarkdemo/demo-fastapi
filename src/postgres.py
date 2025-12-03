@@ -10,7 +10,14 @@ import psycopg
 from dotenv import load_dotenv
 from fastapi import APIRouter, Response, encoders
 from pydantic import BaseModel
-from ddtrace.pin import Pin
+try:
+    # Pin lives at ddtrace.Pin in recent versions; the old ddtrace.pin module was removed
+    from ddtrace import Pin
+except Exception:
+    class Pin:  # fallback no-op to avoid import errors when ddtrace is absent
+        @staticmethod
+        def override(*args, **kwargs):
+            return None
 import logging
 
 # Set up logging
