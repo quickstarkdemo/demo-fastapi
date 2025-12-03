@@ -7,6 +7,7 @@ Uses the Gemini image generation endpoint (Imagen 3.5 Flash by default).
 import os
 import logging
 from typing import Optional, Tuple
+import math
 
 import httpx
 from fastapi import APIRouter, HTTPException
@@ -54,6 +55,28 @@ def _parse_size(size: str) -> Tuple[int, int]:
     except Exception:
         logger.warning("Invalid size '%s', defaulting to 1024x1024", size)
         return 1024, 1024
+
+
+def _normalize_aspect_ratio(width: int, height: int) -> Optional[str]:
+    """
+    Normalize width/height to an allowed aspect ratio string if possible.
+    """
+    allowed = {
+        "1:1",
+        "2:3", "3:2",
+        "3:4", "4:3",
+        "4:5", "5:4",
+        "9:16", "16:9",
+        "21:9",
+    }
+    try:
+        g = math.gcd(width, height)
+        ratio = f"{width // g}:{height // g}"
+        if ratio in allowed:
+            return ratio
+    except Exception as e:
+        logger.debug("Aspect ratio normalize failed: %s", e)
+    return None
 
 
 def _extract_image_payload(data: dict) -> Tuple[str, str]:
@@ -113,6 +136,11 @@ def _build_payload(model_name: str, prompt: str, width: int, height: int) -> Tup
 
     # Gemini v1/v2/v3 image-capable models use generateContent
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+    aspect_ratio = _normalize_aspect_ratio(width, height)
+    image_config = {}
+    if aspect_ratio:
+        image_config["aspectRatio"] = aspect_ratio
+
     payload = {
         "contents": [
             {
@@ -126,12 +154,12 @@ def _build_payload(model_name: str, prompt: str, width: int, height: int) -> Tup
         "generationConfig": {
             # Match doc guidance: explicitly request image
             "responseModalities": ["IMAGE"],
-            "imageConfig": {
-                "aspectRatio": f"{width}:{height}",
-            },
         },
         "safetySettings": [],
     }
+    if image_config:
+        payload["generationConfig"]["imageConfig"] = image_config
+
     return url, payload
 
 
