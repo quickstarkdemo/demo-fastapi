@@ -22,7 +22,13 @@ except ImportError as e:
 from dotenv import load_dotenv
 from fastapi import APIRouter, Response, encoders
 from pydantic import BaseModel
-from ddtrace.trace import Pin
+try:
+    from ddtrace import Pin  # Preferred location in newer ddtrace versions
+except Exception:
+    class Pin:  # Fallback no-op when ddtrace is absent
+        @staticmethod
+        def override(*args, **kwargs):
+            return None
 from ddtrace import tracer
 import logging
 
