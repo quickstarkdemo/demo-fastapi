@@ -212,8 +212,7 @@ origins = [
     "http://192.168.1.200:3000",
     "http://192.168.1.200:5173",
     "http://192.168.1.61:5174",
-    "https://api-images.quickstark.com", # Your development IP
-    "*",                          # Allow all origins (only for development!)
+    "https://gallery.quickstark.com"                         # Allow all origins (only for development!)
 ]
 
 # Configure CORS
