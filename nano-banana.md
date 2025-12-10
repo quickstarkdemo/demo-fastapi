@@ -379,6 +379,31 @@ The following example demonstrates uploading base64 encoded images. For multiple
 
 Keep generating and editing images conversationally. Chat or multi-turn conversation is the recommended way to iterate on images. The following example shows a prompt to generate an infographic about photosynthesis.  
 
+### FastAPI multi-turn endpoint (what the frontend should call)
+
+`POST /gemini-edit-image`
+
+Body:
+
+```
+{
+  "model": "gemini-2.5-flash-image",          // optional; defaults to gemini-2.5-flash-image
+  "size": "1024x1024",                        // optional; sets aspectRatio when valid
+  "messages": [
+    { "role": "user", "parts": [ { "text": "Create a picture of a nano banana dish in a Gemini-themed diner" } ] },
+    { "role": "assistant", "parts": [ { "image_base64": "<prev_image_b64>", "mime_type": "image/png" } ] },
+    { "role": "user", "parts": [ { "text": "Make it sunset lighting and add neon signage" } ] }
+  ]
+}
+```
+
+Rules:
+- `role` must be `user` or `assistant`.
+- Each part must include exactly one of `text` **or** `image_base64` (with optional `mime_type`, default `image/png`).
+- `size` is optional; when provided we pass only the aspect ratio to Gemini.
+- Model must be Gemini image-capable (`gemini-*`); Imagen models are rejected for multi-turn.
+- Response shape matches `/gemini-generate-image`: `{ model, mime_type, image_base64, prompt (last user text), size }`.
+
 ### Python
 
     from google import genai

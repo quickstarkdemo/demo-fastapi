@@ -6,12 +6,12 @@ Uses the Gemini image generation endpoint (Imagen 3.5 Flash by default).
 
 import os
 import logging
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 import math
 
 import httpx
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, root_validator, validator
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,75 @@ class GeminiImageResponse(BaseModel):
     image_base64: str
     prompt: str
     size: str
+
+
+class GeminiImagePart(BaseModel):
+    """
+    A single part of a Gemini message: either text or an inline base64 image.
+    """
+
+    text: Optional[str] = Field(
+        default=None, description="Plain text content for this part"
+    )
+    image_base64: Optional[str] = Field(
+        default=None,
+        description="Base64-encoded image to send back for editing",
+    )
+    mime_type: Optional[str] = Field(
+        default="image/png",
+        description="Image MIME type for image_base64 parts",
+    )
+
+    @root_validator
+    def validate_content(cls, values):
+        text, image = values.get("text"), values.get("image_base64")
+        if (text and image) or (not text and not image):
+            raise ValueError("Provide exactly one of text or image_base64 in a part")
+        return values
+
+
+class GeminiImageMessage(BaseModel):
+    role: str = Field(
+        ...,
+        description="Message role ('user' or 'assistant')",
+    )
+    parts: List[GeminiImagePart]
+
+    @validator("role")
+    def normalize_role(cls, value: str) -> str:
+        normalized = value.lower()
+        if normalized not in {"user", "assistant"}:
+            raise ValueError("role must be 'user' or 'assistant'")
+        return normalized
+
+    @root_validator
+    def ensure_parts(cls, values):
+        parts = values.get("parts") or []
+        if not parts:
+            raise ValueError("messages must include at least one part")
+        return values
+
+
+class GeminiMultiTurnRequest(BaseModel):
+    messages: List[GeminiImageMessage] = Field(
+        ...,
+        description="Ordered conversation history to send to Gemini",
+    )
+    size: Optional[str] = Field(
+        default=None,
+        description="Optional WIDTHxHEIGHT hint; sets aspectRatio if valid",
+    )
+    model: Optional[str] = Field(
+        default=None,
+        description="Gemini image model name (defaults to gemini-2.5-flash-image)",
+    )
+
+    @root_validator
+    def validate_messages(cls, values):
+        messages = values.get("messages") or []
+        if not messages:
+            raise ValueError("messages cannot be empty for multi-turn editing")
+        return values
 
 
 def _parse_size(size: str) -> Tuple[int, int]:
@@ -163,6 +232,71 @@ def _build_payload(model_name: str, prompt: str, width: int, height: int) -> Tup
     return url, payload
 
 
+def _build_multi_turn_payload(
+    model_name: str,
+    messages: List[GeminiImageMessage],
+    size: Optional[str] = None,
+) -> Tuple[str, dict, str]:
+    """
+    Build payload for multi-turn image editing via generateContent.
+    Returns (url, payload, size_label).
+    """
+    if model_name.startswith("imagen-"):
+        raise HTTPException(
+            status_code=400,
+            detail="Multi-turn editing requires a Gemini image model (gemini-*)",
+        )
+
+    width = height = None
+    size_label = "unspecified"
+    image_config = {}
+    if size:
+        width, height = _parse_size(size)
+        size_label = f"{width}x{height}"
+        aspect_ratio = _normalize_aspect_ratio(width, height)
+        if aspect_ratio:
+            image_config["aspectRatio"] = aspect_ratio
+
+    def _to_gemini_part(part: GeminiImagePart) -> dict:
+        if part.text is not None:
+            return {"text": part.text}
+        return {
+            "inlineData": {
+                "mimeType": part.mime_type or "image/png",
+                "data": part.image_base64,
+            }
+        }
+
+    contents = []
+    for msg in messages:
+        parts = [_to_gemini_part(p) for p in msg.parts]
+        contents.append({"role": msg.role, "parts": parts})
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+    payload: dict = {
+        "contents": contents,
+        "generationConfig": {"responseModalities": ["IMAGE"]},
+        "safetySettings": [],
+    }
+    if image_config:
+        payload["generationConfig"]["imageConfig"] = image_config
+
+    return url, payload, size_label
+
+
+def _last_user_prompt(messages: List[GeminiImageMessage]) -> str:
+    """
+    Best-effort extraction of the latest user text prompt for response metadata.
+    """
+    for msg in reversed(messages):
+        if msg.role != "user":
+            continue
+        for part in reversed(msg.parts):
+            if part.text:
+                return part.text
+    return ""
+
+
 @router_gemini.post("/gemini-generate-image", response_model=GeminiImageResponse)
 async def generate_gemini_image(request: GeminiImageRequest):
     """
@@ -208,3 +342,52 @@ async def generate_gemini_image(request: GeminiImageRequest):
     except Exception as exc:
         logger.error("Gemini image generation failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail="Gemini image generation failed")
+
+
+@router_gemini.post("/gemini-edit-image", response_model=GeminiImageResponse)
+async def edit_gemini_image(request: GeminiMultiTurnRequest):
+    """
+    Perform multi-turn image editing by sending prior conversation (text + images) to Gemini.
+    """
+    api_key = GEMINI_API_KEY or os.getenv("GOOGLE_API_KEY") or os.getenv("GENAI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY is not configured")
+
+    model_name = request.model or DEFAULT_MODEL
+    try:
+        url, payload, size_label = _build_multi_turn_payload(
+            model_name=model_name,
+            messages=request.messages,
+            size=request.size,
+        )
+
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(
+                url,
+                params={"key": api_key},
+                headers={"x-goog-api-key": api_key},
+                json=payload,
+            )
+            if resp.status_code >= 400:
+                text = resp.text
+                logger.error("Gemini API error %s: %s", resp.status_code, text)
+                raise HTTPException(
+                    status_code=resp.status_code,
+                    detail=f"Gemini API error ({resp.status_code}): {text[:400]}",
+                )
+            data = resp.json()
+
+        image_b64, mime_type = _extract_image_payload(data)
+        prompt_summary = _last_user_prompt(request.messages)
+        return GeminiImageResponse(
+            model=model_name,
+            mime_type=mime_type,
+            image_base64=image_b64,
+            prompt=prompt_summary,
+            size=size_label,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Gemini multi-turn editing failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Gemini image editing failed")
