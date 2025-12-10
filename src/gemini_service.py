@@ -11,7 +11,7 @@ import math
 
 import httpx
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field, root_validator, validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -59,12 +59,11 @@ class GeminiImagePart(BaseModel):
         description="Image MIME type for image_base64 parts",
     )
 
-    @root_validator
-    def validate_content(cls, values):
-        text, image = values.get("text"), values.get("image_base64")
-        if (text and image) or (not text and not image):
+    @model_validator(mode="after")
+    def validate_content(self):
+        if bool(self.text) == bool(self.image_base64):
             raise ValueError("Provide exactly one of text or image_base64 in a part")
-        return values
+        return self
 
 
 class GeminiImageMessage(BaseModel):
@@ -74,19 +73,18 @@ class GeminiImageMessage(BaseModel):
     )
     parts: List[GeminiImagePart]
 
-    @validator("role")
+    @field_validator("role")
     def normalize_role(cls, value: str) -> str:
         normalized = value.lower()
         if normalized not in {"user", "assistant"}:
             raise ValueError("role must be 'user' or 'assistant'")
         return normalized
 
-    @root_validator
-    def ensure_parts(cls, values):
-        parts = values.get("parts") or []
-        if not parts:
+    @model_validator(mode="after")
+    def ensure_parts(self):
+        if not (self.parts or []):
             raise ValueError("messages must include at least one part")
-        return values
+        return self
 
 
 class GeminiMultiTurnRequest(BaseModel):
@@ -103,12 +101,11 @@ class GeminiMultiTurnRequest(BaseModel):
         description="Gemini image model name (defaults to gemini-2.5-flash-image)",
     )
 
-    @root_validator
-    def validate_messages(cls, values):
-        messages = values.get("messages") or []
-        if not messages:
+    @model_validator(mode="after")
+    def validate_messages(self):
+        if not (self.messages or []):
             raise ValueError("messages cannot be empty for multi-turn editing")
-        return values
+        return self
 
 
 def _parse_size(size: str) -> Tuple[int, int]:
