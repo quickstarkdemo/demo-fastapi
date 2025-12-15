@@ -45,6 +45,10 @@ class FaultProfile(BaseModel):
 class StartRequest(BaseModel):
     """Configuration for a demo run."""
 
+    bootstrap_servers: Optional[str] = Field(
+        default=None,
+        description="Override Kafka bootstrap servers (defaults to env KAFKA_BOOTSTRAP_SERVERS)",
+    )
     rate_per_sec: float = Field(
         5.0, gt=0, le=50, description="Messages per second from the raw producer"
     )
@@ -109,9 +113,12 @@ def require_kafka_client() -> None:
         )
 
 
-def load_config(topic_override: Optional[str] = None) -> KafkaConfig:
+def load_config(
+    topic_override: Optional[str] = None,
+    bootstrap_override: Optional[str] = None,
+) -> KafkaConfig:
     """Read Kafka config from env with sane defaults."""
-    bootstrap = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+    bootstrap = bootstrap_override or os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
     config = KafkaConfig(
         bootstrap_servers=bootstrap,
         security_protocol=os.getenv("KAFKA_SECURITY_PROTOCOL", "PLAINTEXT"),
@@ -371,7 +378,7 @@ async def start_kafka_demo(req: StartRequest):
     if state.running:
         return await kafka_demo_status()
 
-    conf = load_config(req.topic_prefix)
+    conf = load_config(req.topic_prefix, req.bootstrap_servers)
     state.config = conf
     state.topics = conf.topics()
     state.run_id = str(uuid.uuid4())
