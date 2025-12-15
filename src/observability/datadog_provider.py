@@ -74,6 +74,14 @@ class DatadogProvider(ObservabilityProvider):
 
             # Patch all supported libraries
             logger.info("Initializing Datadog tracing...")
+            # Enable Data Streams Monitoring for Kafka if configured
+            # This is sometimes required when using manual instrumentation instead of ddtrace-run
+            dsm_enabled = os.getenv('DD_DATA_STREAMS_ENABLED', 'false').lower() == 'true'
+            if dsm_enabled:
+                from ddtrace import config
+                config.kafka["data_streams_enabled"] = True
+                logger.info("Explicitly enabled Data Streams Monitoring for Kafka")
+
             patch_all(
                 logging=True,
                 httpx=True,
