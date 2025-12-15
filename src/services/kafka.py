@@ -262,7 +262,9 @@ async def _consumer_analytics(conf: KafkaConfig) -> None:
             if msg is None:
                 continue
             if msg.error():
-                logger.error(f"Kafka consumer error: {msg.error()}")
+                err = str(msg.error())
+                state.last_error = f"analytics consumer error: {err}"
+                logger.error(state.last_error)
                 continue
 
             if msg.headers():
@@ -314,7 +316,9 @@ async def _consumer_alerts(conf: KafkaConfig) -> None:
             if msg is None:
                 continue
             if msg.error():
-                logger.error(f"Kafka alert consumer error: {msg.error()}")
+                err = str(msg.error())
+                state.last_error = f"alerts consumer error: {err}"
+                logger.error(state.last_error)
                 continue
 
             data = json.loads(msg.value().decode("utf-8"))

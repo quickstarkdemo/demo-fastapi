@@ -74,3 +74,76 @@ pip install confluent-kafka
 - Missing client: ensure `confluent-kafka` is installed (arm64 wheels available).
 - No data in DSM: verify `DD_DATA_STREAMS_ENABLED=true`, broker reachable from agent, and topics are created/receiving data.
 - Auth errors: check `KAFKA_SECURITY_PROTOCOL`, SASL envs, and CA path if TLS is enabled.
+
+## API Spec (Kafka Demo)
+Base path: `/api/v1/kafka-demo`
+
+- `POST /start` – Start producer + analytics + alerts.
+  - Body:
+    ```json
+    {
+      "bootstrap_servers": "192.168.1.200:9092",  // optional; overrides env
+      "rate_per_sec": 5,                          // >0, <=50
+      "max_messages": 200,                        // optional; null = no cap
+      "scenario": "f1",
+      "topic_prefix": "f1",                       // optional; overrides env
+      "fault": {
+        "latency_ms": 0,
+        "drop_probability": 0.0,
+        "duplicate_ratio": 0.0,
+        "slow_consumer_ms": 0
+      }
+    }
+    ```
+  - Response: same shape as `/status` with run_id, topics, metrics, fault, last_error.
+  - If already running, returns current status.
+
+- `POST /stop` – Stop all demo tasks.
+  - Body: none.
+  - Response: `{"running": false, "message": "Kafka demo stopped"}` (idempotent).
+
+- `GET /status` – Current state and counters.
+  - Example response:
+    ```json
+    {
+      "running": true,
+      "run_id": "uuid",
+      "topics": {
+        "raw": "f1.telemetry.raw",
+        "analytics": "f1.telemetry.analytics",
+        "alerts": "f1.telemetry.alerts"
+      },
+      "bootstrap_servers": "192.168.1.200:9092",
+      "metrics": {
+        "produced": 123,
+        "analytics_consumed": 120,
+        "alerts_consumed": 5
+      },
+      "last_message_at": "2025-12-15T17:16:11.039577",
+      "fault": {
+        "latency_ms": 0,
+        "drop_probability": 0,
+        "duplicate_ratio": 0,
+        "slow_consumer_ms": 0
+      },
+      "last_error": null
+    }
+    ```
+
+- `POST /fault` – Update fault profile live (can be called while running).
+  - Body:
+    ```json
+    {
+      "fault": {
+        "latency_ms": 250,
+        "drop_probability": 0.05,
+        "duplicate_ratio": 0.1,
+        "slow_consumer_ms": 500
+      }
+    }
+    ```
+  - Response: same as `/status` with updated fault values.
+
+Notes:
+- Placeholders like `"string"` or empty values for `bootstrap_servers` / `topic_prefix` are ignored and env defaults are used.
+- Required envs if not provided in the request: `KAFKA_BOOTSTRAP_SERVERS` (plus optional `KAFKA_TOPIC_PREFIX`, `KAFKA_CONSUMER_GROUP`, SASL/TLS settings).
