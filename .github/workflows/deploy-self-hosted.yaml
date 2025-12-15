@@ -432,6 +432,7 @@ jobs:
             --restart unless-stopped \
             -p 9000:8080 \
             --add-host=host.docker.internal:host-gateway \
+            --add-host=kafka-broker:${{ secrets.KAFKA_BROKER_HOST || '192.168.1.200' }} \
             -e OBSERVABILITY_PROVIDER="${{ secrets.OBSERVABILITY_PROVIDER || 'datadog' }}" \
             -e DD_SERVICE="${{ secrets.DD_SERVICE }}" \
             -e DD_ENV="${{ secrets.DD_ENV }}" \
