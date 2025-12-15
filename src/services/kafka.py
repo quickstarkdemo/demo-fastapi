@@ -189,7 +189,8 @@ def _consumer_settings(conf: KafkaConfig, client_id: str) -> Dict[str, str]:
         {
             "group.id": conf.consumer_group,
             "enable.auto.commit": False,
-            "auto.offset.reset": "latest",
+            # Use earliest so demo consumers can read messages even if producer starts first
+            "auto.offset.reset": "earliest",
         }
     )
     return settings
