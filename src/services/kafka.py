@@ -113,12 +113,25 @@ def require_kafka_client() -> None:
         )
 
 
+def _sanitize_override(value: Optional[str]) -> Optional[str]:
+    """Treat Swagger placeholders like 'string' or blanks as unset."""
+    if value is None:
+        return None
+    val = str(value).strip()
+    if val == "" or val.lower() in {"string", "null", "none"}:
+        return None
+    return val
+
+
 def load_config(
     topic_override: Optional[str] = None,
     bootstrap_override: Optional[str] = None,
 ) -> KafkaConfig:
     """Read Kafka config from env with sane defaults."""
-    bootstrap = bootstrap_override or os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+    bootstrap = _sanitize_override(bootstrap_override) or os.getenv(
+        "KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"
+    )
+    topic_prefix = _sanitize_override(topic_override) or os.getenv("KAFKA_TOPIC_PREFIX", "f1") or "f1"
     config = KafkaConfig(
         bootstrap_servers=bootstrap,
         security_protocol=os.getenv("KAFKA_SECURITY_PROTOCOL", "PLAINTEXT"),
@@ -126,9 +139,7 @@ def load_config(
         sasl_username=os.getenv("KAFKA_SASL_USERNAME"),
         sasl_password=os.getenv("KAFKA_SASL_PASSWORD"),
         ssl_ca_location=os.getenv("KAFKA_SSL_CA_LOCATION"),
-        topic_prefix=topic_override
-        or os.getenv("KAFKA_TOPIC_PREFIX", "f1")
-        or "f1",
+        topic_prefix=topic_prefix,
         consumer_group=os.getenv("KAFKA_CONSUMER_GROUP", "f1-demo"),
     )
     logger.info(
