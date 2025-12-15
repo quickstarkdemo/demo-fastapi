@@ -113,6 +113,13 @@ def require_kafka_client() -> None:
         )
 
 
+def _strip_comment(value: Optional[str]) -> Optional[str]:
+    """Remove inline comments like 'PLAINTEXT  # comment' and trim whitespace."""
+    if value is None:
+        return None
+    return value.split("#", 1)[0].strip()
+
+
 def _sanitize_override(value: Optional[str]) -> Optional[str]:
     """Treat Swagger placeholders like 'string' or blanks as unset."""
     if value is None:
@@ -131,14 +138,19 @@ def load_config(
     bootstrap = _sanitize_override(bootstrap_override) or os.getenv(
         "KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"
     )
+    protocol_raw = _strip_comment(os.getenv("KAFKA_SECURITY_PROTOCOL", "PLAINTEXT"))
+    sasl_mechanism = _strip_comment(os.getenv("KAFKA_SASL_MECHANISM"))
+    sasl_username = _strip_comment(os.getenv("KAFKA_SASL_USERNAME"))
+    sasl_password = _strip_comment(os.getenv("KAFKA_SASL_PASSWORD"))
+    ssl_ca_location = _strip_comment(os.getenv("KAFKA_SSL_CA_LOCATION"))
     topic_prefix = _sanitize_override(topic_override) or os.getenv("KAFKA_TOPIC_PREFIX", "f1") or "f1"
     config = KafkaConfig(
         bootstrap_servers=bootstrap,
-        security_protocol=os.getenv("KAFKA_SECURITY_PROTOCOL", "PLAINTEXT"),
-        sasl_mechanism=os.getenv("KAFKA_SASL_MECHANISM"),
-        sasl_username=os.getenv("KAFKA_SASL_USERNAME"),
-        sasl_password=os.getenv("KAFKA_SASL_PASSWORD"),
-        ssl_ca_location=os.getenv("KAFKA_SSL_CA_LOCATION"),
+        security_protocol=protocol_raw or "PLAINTEXT",
+        sasl_mechanism=sasl_mechanism,
+        sasl_username=sasl_username,
+        sasl_password=sasl_password,
+        ssl_ca_location=ssl_ca_location,
         topic_prefix=topic_prefix,
         consumer_group=os.getenv("KAFKA_CONSUMER_GROUP", "f1-demo"),
     )
@@ -185,7 +197,12 @@ def _consumer_settings(conf: KafkaConfig, client_id: str) -> Dict[str, str]:
 
 async def _producer_loop(conf: KafkaConfig, req: StartRequest) -> None:
     """Generate synthetic F1 telemetry and publish to Kafka."""
-    producer = Producer(_producer_settings(conf, client_id=f"producer-{state.run_id}"))
+    try:
+        producer = Producer(_producer_settings(conf, client_id=f"producer-{state.run_id}"))
+    except Exception as exc:  # pragma: no cover - runtime path
+        state.last_error = f"Producer init failed: {exc}"
+        logger.error(state.last_error)
+        return
     topics = conf.topics()
     interval = 1.0 / req.rate_per_sec
     sent = 0
@@ -223,9 +240,20 @@ async def _producer_loop(conf: KafkaConfig, req: StartRequest) -> None:
 async def _consumer_analytics(conf: KafkaConfig) -> None:
     """Consume raw telemetry, enrich, and forward to analytics topic."""
     topics = conf.topics()
-    consumer = Consumer(_consumer_settings(conf, client_id=f"analytics-{state.run_id}"))
+    try:
+        consumer = Consumer(_consumer_settings(conf, client_id=f"analytics-{state.run_id}"))
+    except Exception as exc:  # pragma: no cover - runtime path
+        state.last_error = f"Analytics consumer init failed: {exc}"
+        logger.error(state.last_error)
+        return
     consumer.subscribe([topics["raw"]])
-    producer = Producer(_producer_settings(conf, client_id=f"analytics-p-{state.run_id}"))
+    try:
+        producer = Producer(_producer_settings(conf, client_id=f"analytics-p-{state.run_id}"))
+    except Exception as exc:  # pragma: no cover - runtime path
+        state.last_error = f"Analytics producer init failed: {exc}"
+        logger.error(state.last_error)
+        consumer.close()
+        return
     logger.info(f"Kafka analytics consumer subscribed to {topics['raw']}")
 
     try:
@@ -259,9 +287,20 @@ async def _consumer_analytics(conf: KafkaConfig) -> None:
 async def _consumer_alerts(conf: KafkaConfig) -> None:
     """Consume analytics events and emit alerts when thresholds trip."""
     topics = conf.topics()
-    consumer = Consumer(_consumer_settings(conf, client_id=f"alerts-{state.run_id}"))
+    try:
+        consumer = Consumer(_consumer_settings(conf, client_id=f"alerts-{state.run_id}"))
+    except Exception as exc:  # pragma: no cover - runtime path
+        state.last_error = f"Alerts consumer init failed: {exc}"
+        logger.error(state.last_error)
+        return
     consumer.subscribe([topics["analytics"]])
-    producer = Producer(_producer_settings(conf, client_id=f"alerts-p-{state.run_id}"))
+    try:
+        producer = Producer(_producer_settings(conf, client_id=f"alerts-p-{state.run_id}"))
+    except Exception as exc:  # pragma: no cover - runtime path
+        state.last_error = f"Alerts producer init failed: {exc}"
+        logger.error(state.last_error)
+        consumer.close()
+        return
     logger.info(f"Kafka alert consumer subscribed to {topics['analytics']}")
 
     try:
