@@ -265,6 +265,11 @@ async def _consumer_analytics(conf: KafkaConfig) -> None:
                 logger.error(f"Kafka consumer error: {msg.error()}")
                 continue
 
+            if msg.headers():
+                logger.debug(f"Kafka message headers: {msg.headers()}")
+            else:
+                logger.debug("Kafka message has no headers")
+
             data = json.loads(msg.value().decode("utf-8"))
             enriched = _enrich_payload(data)
             _publish_message(producer, topics["analytics"], enriched)

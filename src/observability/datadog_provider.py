@@ -80,6 +80,15 @@ class DatadogProvider(ObservabilityProvider):
             if dsm_enabled:
                 from ddtrace import config
                 config.kafka["data_streams_enabled"] = True
+                
+                # CRITICAL: Manually import datastreams to register hooks
+                # In manual instrumentation, this module is often not imported automatically
+                try:
+                    import ddtrace.internal.datastreams
+                    logger.info("Explicitly imported ddtrace.internal.datastreams for DSM hooks")
+                except ImportError:
+                    logger.warning("Failed to import ddtrace.internal.datastreams - DSM may not work")
+
                 logger.info("Explicitly enabled Data Streams Monitoring for Kafka")
 
             patch_all(
