@@ -111,8 +111,9 @@ def require_kafka_client() -> None:
 
 def load_config(topic_override: Optional[str] = None) -> KafkaConfig:
     """Read Kafka config from env with sane defaults."""
+    bootstrap = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
     config = KafkaConfig(
-        bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
+        bootstrap_servers=bootstrap,
         security_protocol=os.getenv("KAFKA_SECURITY_PROTOCOL", "PLAINTEXT"),
         sasl_mechanism=os.getenv("KAFKA_SASL_MECHANISM"),
         sasl_username=os.getenv("KAFKA_SASL_USERNAME"),
@@ -122,6 +123,13 @@ def load_config(topic_override: Optional[str] = None) -> KafkaConfig:
         or os.getenv("KAFKA_TOPIC_PREFIX", "f1")
         or "f1",
         consumer_group=os.getenv("KAFKA_CONSUMER_GROUP", "f1-demo"),
+    )
+    logger.info(
+        "Kafka demo config loaded: bootstrap=%s protocol=%s topic_prefix=%s consumer_group=%s",
+        config.bootstrap_servers,
+        config.security_protocol,
+        config.topic_prefix,
+        config.consumer_group,
     )
     return config
 
@@ -379,7 +387,8 @@ async def start_kafka_demo(req: StartRequest):
     ]
     state.running = True
     logger.info(
-        f"Kafka demo started run_id={state.run_id} topics={state.topics} rate={req.rate_per_sec}"
+        f"Kafka demo started run_id={state.run_id} bootstrap={conf.bootstrap_servers} "
+        f"topics={state.topics} rate={req.rate_per_sec}"
     )
     return await kafka_demo_status()
 
@@ -401,6 +410,7 @@ async def kafka_demo_status():
         "running": state.running,
         "run_id": state.run_id,
         "topics": state.topics,
+        "bootstrap_servers": state.config.bootstrap_servers if state.config else None,
         "metrics": state.metrics,
         "last_message_at": state.last_message_at,
         "fault": state.fault,
