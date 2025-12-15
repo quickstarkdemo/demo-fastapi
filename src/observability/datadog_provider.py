@@ -81,7 +81,8 @@ class DatadogProvider(ObservabilityProvider):
                 psycopg=True,
                 boto=True,
                 openai=True,
-                fastapi=True
+                fastapi=True,
+                kafka=True
             )
             logger.info("Datadog tracing initialized with patch_all()")
 

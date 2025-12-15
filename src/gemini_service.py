@@ -6,6 +6,8 @@ Uses the Gemini image generation endpoint (Imagen 3.5 Flash by default).
 
 import os
 import logging
+import sys
+from contextlib import contextmanager
 from typing import List, Optional, Tuple
 import math
 
@@ -14,6 +16,12 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 logger = logging.getLogger(__name__)
+
+# Optional Datadog tracer (fallback to no-op if ddtrace is missing)
+try:
+    from ddtrace import tracer
+except Exception:
+    tracer = None
 
 router_gemini = APIRouter(tags=["Gemini"])
 
@@ -106,6 +114,38 @@ class GeminiMultiTurnRequest(BaseModel):
         if not (self.messages or []):
             raise ValueError("messages cannot be empty for multi-turn editing")
         return self
+
+
+@contextmanager
+def _llm_span(operation: str, model_name: str, prompt: str, extra_tags: Optional[dict] = None):
+    """
+    Best-effort Datadog span for LLM requests so Gemini traffic shows up in LLM monitoring.
+    """
+    if not tracer:
+        yield None
+        return
+
+    with tracer.trace(
+        "llm.request",
+        service="gemini-service",
+        resource=operation,
+        span_type="llm",
+    ) as span:
+        try:
+            span.set_tag_str("component", "gemini")
+            span.set_tag_str("llm.provider", "google")
+            span.set_tag_str("llm.model", model_name)
+            span.set_tag_str("llm.operation", operation)
+            if prompt:
+                span.set_tag_str("llm.request.prompt", prompt)
+                span.set_metric("llm.request.prompt_length", len(prompt))
+            if extra_tags:
+                for key, value in extra_tags.items():
+                    span.set_tag_str(key, str(value))
+            yield span
+        except Exception:
+            span.set_exc_info(*sys.exc_info())
+            raise
 
 
 def _parse_size(size: str) -> Tuple[int, int]:
@@ -309,31 +349,50 @@ async def generate_gemini_image(request: GeminiImageRequest):
     url, payload = _build_payload(model_name, request.prompt, width, height)
 
     try:
-        async with httpx.AsyncClient(timeout=60) as client:
-            # Use header as in Google’s examples; keep query param for compatibility
-            resp = await client.post(
-                url,
-                params={"key": api_key},
-                headers={"x-goog-api-key": api_key},
-                json=payload,
-            )
-            if resp.status_code >= 400:
-                text = resp.text
-                logger.error("Gemini API error %s: %s", resp.status_code, text)
-                raise HTTPException(
-                    status_code=resp.status_code,
-                    detail=f"Gemini API error ({resp.status_code}): {text[:400]}",
-                )
-            data = resp.json()
-
-        image_b64, mime_type = _extract_image_payload(data)
-        return GeminiImageResponse(
-            model=model_name,
-            mime_type=mime_type,
-            image_base64=image_b64,
+        with _llm_span(
+            operation="gemini.generate_image",
+            model_name=model_name,
             prompt=request.prompt,
-            size=f"{width}x{height}",
-        )
+            extra_tags={
+                "llm.request.size": f"{width}x{height}",
+                "llm.request.endpoint": url,
+            },
+        ) as span:
+            async with httpx.AsyncClient(timeout=60) as client:
+                # Use header as in Google’s examples; keep query param for compatibility
+                resp = await client.post(
+                    url,
+                    params={"key": api_key},
+                    headers={"x-goog-api-key": api_key},
+                    json=payload,
+                )
+                if resp.status_code >= 400:
+                    text = resp.text
+                    logger.error("Gemini API error %s: %s", resp.status_code, text)
+                    if span:
+                        span.set_tag("error", True)
+                        span.set_tag_str("llm.response.body", text[:400])
+                        span.set_tag_str("http.status_code", str(resp.status_code))
+                    raise HTTPException(
+                        status_code=resp.status_code,
+                        detail=f"Gemini API error ({resp.status_code}): {text[:400]}",
+                    )
+                data = resp.json()
+
+            image_b64, mime_type = _extract_image_payload(data)
+            if span:
+                span.set_tag_str("llm.response.mime_type", mime_type)
+                span.set_tag_str("llm.response.size", f"{width}x{height}")
+                span.set_tag_str("llm.response.model", model_name)
+                span.set_tag_str("http.status_code", str(resp.status_code))
+
+            return GeminiImageResponse(
+                model=model_name,
+                mime_type=mime_type,
+                image_base64=image_b64,
+                prompt=request.prompt,
+                size=f"{width}x{height}",
+            )
     except HTTPException:
         raise
     except Exception as exc:
@@ -358,31 +417,50 @@ async def edit_gemini_image(request: GeminiMultiTurnRequest):
             size=request.size,
         )
 
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(
-                url,
-                params={"key": api_key},
-                headers={"x-goog-api-key": api_key},
-                json=payload,
-            )
-            if resp.status_code >= 400:
-                text = resp.text
-                logger.error("Gemini API error %s: %s", resp.status_code, text)
-                raise HTTPException(
-                    status_code=resp.status_code,
-                    detail=f"Gemini API error ({resp.status_code}): {text[:400]}",
-                )
-            data = resp.json()
-
-        image_b64, mime_type = _extract_image_payload(data)
         prompt_summary = _last_user_prompt(request.messages)
-        return GeminiImageResponse(
-            model=model_name,
-            mime_type=mime_type,
-            image_base64=image_b64,
+        with _llm_span(
+            operation="gemini.edit_image",
+            model_name=model_name,
             prompt=prompt_summary,
-            size=size_label,
-        )
+            extra_tags={
+                "llm.request.size": size_label,
+                "llm.request.endpoint": url,
+            },
+        ) as span:
+            async with httpx.AsyncClient(timeout=60) as client:
+                resp = await client.post(
+                    url,
+                    params={"key": api_key},
+                    headers={"x-goog-api-key": api_key},
+                    json=payload,
+                )
+                if resp.status_code >= 400:
+                    text = resp.text
+                    logger.error("Gemini API error %s: %s", resp.status_code, text)
+                    if span:
+                        span.set_tag("error", True)
+                        span.set_tag_str("llm.response.body", text[:400])
+                        span.set_tag_str("http.status_code", str(resp.status_code))
+                    raise HTTPException(
+                        status_code=resp.status_code,
+                        detail=f"Gemini API error ({resp.status_code}): {text[:400]}",
+                    )
+                data = resp.json()
+
+            image_b64, mime_type = _extract_image_payload(data)
+            if span:
+                span.set_tag_str("llm.response.mime_type", mime_type)
+                span.set_tag_str("llm.response.size", size_label)
+                span.set_tag_str("llm.response.model", model_name)
+                span.set_tag_str("http.status_code", str(resp.status_code))
+
+            return GeminiImageResponse(
+                model=model_name,
+                mime_type=mime_type,
+                image_base64=image_b64,
+                prompt=prompt_summary,
+                size=size_label,
+            )
     except HTTPException:
         raise
     except Exception as exc:

@@ -30,6 +30,9 @@ ddtrace>=3.8.0  # Updated to use newer version with pre-compiled wheels
 # Datadog (new additions)
 datadog-api-client==2.20.0  # Add API client
 
+# Kafka
+confluent-kafka>=2.5.0
+
 # Sentry - error tracking, tracing, and profiling
 sentry-sdk[fastapi]>=2.44.0  # Includes FastAPI, Starlette, HTTPX, log+profiling integrations
 
