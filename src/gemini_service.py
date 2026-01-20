@@ -132,16 +132,16 @@ def _llm_span(operation: str, model_name: str, prompt: str, extra_tags: Optional
         span_type="llm",
     ) as span:
         try:
-            span.set_tag_str("component", "gemini")
-            span.set_tag_str("llm.provider", "google")
-            span.set_tag_str("llm.model", model_name)
-            span.set_tag_str("llm.operation", operation)
+            span.set_tag("component", "gemini")
+            span.set_tag("llm.provider", "google")
+            span.set_tag("llm.model", model_name)
+            span.set_tag("llm.operation", operation)
             if prompt:
-                span.set_tag_str("llm.request.prompt", prompt)
+                span.set_tag("llm.request.prompt", prompt)
                 span.set_metric("llm.request.prompt_length", len(prompt))
             if extra_tags:
                 for key, value in extra_tags.items():
-                    span.set_tag_str(key, str(value))
+                    span.set_tag(key, str(value))
             yield span
         except Exception:
             span.set_exc_info(*sys.exc_info())
@@ -371,8 +371,8 @@ async def generate_gemini_image(request: GeminiImageRequest):
                     logger.error("Gemini API error %s: %s", resp.status_code, text)
                     if span:
                         span.set_tag("error", True)
-                        span.set_tag_str("llm.response.body", text[:400])
-                        span.set_tag_str("http.status_code", str(resp.status_code))
+                        span.set_tag("llm.response.body", text[:400])
+                        span.set_tag("http.status_code", str(resp.status_code))
                     raise HTTPException(
                         status_code=resp.status_code,
                         detail=f"Gemini API error ({resp.status_code}): {text[:400]}",
@@ -381,10 +381,10 @@ async def generate_gemini_image(request: GeminiImageRequest):
 
             image_b64, mime_type = _extract_image_payload(data)
             if span:
-                span.set_tag_str("llm.response.mime_type", mime_type)
-                span.set_tag_str("llm.response.size", f"{width}x{height}")
-                span.set_tag_str("llm.response.model", model_name)
-                span.set_tag_str("http.status_code", str(resp.status_code))
+                span.set_tag("llm.response.mime_type", mime_type)
+                span.set_tag("llm.response.size", f"{width}x{height}")
+                span.set_tag("llm.response.model", model_name)
+                span.set_tag("http.status_code", str(resp.status_code))
 
             return GeminiImageResponse(
                 model=model_name,
@@ -439,8 +439,8 @@ async def edit_gemini_image(request: GeminiMultiTurnRequest):
                     logger.error("Gemini API error %s: %s", resp.status_code, text)
                     if span:
                         span.set_tag("error", True)
-                        span.set_tag_str("llm.response.body", text[:400])
-                        span.set_tag_str("http.status_code", str(resp.status_code))
+                        span.set_tag("llm.response.body", text[:400])
+                        span.set_tag("http.status_code", str(resp.status_code))
                     raise HTTPException(
                         status_code=resp.status_code,
                         detail=f"Gemini API error ({resp.status_code}): {text[:400]}",
@@ -449,10 +449,10 @@ async def edit_gemini_image(request: GeminiMultiTurnRequest):
 
             image_b64, mime_type = _extract_image_payload(data)
             if span:
-                span.set_tag_str("llm.response.mime_type", mime_type)
-                span.set_tag_str("llm.response.size", size_label)
-                span.set_tag_str("llm.response.model", model_name)
-                span.set_tag_str("http.status_code", str(resp.status_code))
+                span.set_tag("llm.response.mime_type", mime_type)
+                span.set_tag("llm.response.size", size_label)
+                span.set_tag("llm.response.model", model_name)
+                span.set_tag("http.status_code", str(resp.status_code))
 
             return GeminiImageResponse(
                 model=model_name,
