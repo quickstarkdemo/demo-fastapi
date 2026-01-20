@@ -197,6 +197,7 @@ def _extract_image_payload(data: dict) -> Tuple[str, str]:
     try:
         candidates = data.get("candidates", [])
         parts = candidates[0]["content"]["parts"]
+        logger.info("Gemini raw response parts: %s", parts)
         inline_data = None
         for p in parts:
             if "inlineData" in p:
