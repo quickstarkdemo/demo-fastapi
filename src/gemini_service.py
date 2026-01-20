@@ -66,6 +66,10 @@ class GeminiImagePart(BaseModel):
         default="image/png",
         description="Image MIME type for image_base64 parts",
     )
+    thought: Optional[bool] = Field(
+        default=None,
+        description="Whether this part represents a thought (Chain of Thought)",
+    )
 
     @model_validator(mode="after")
     def validate_content(self):
@@ -297,12 +301,15 @@ def _build_multi_turn_payload(
     def _to_gemini_part(part: GeminiImagePart) -> dict:
         if part.text is not None:
             return {"text": part.text}
-        return {
+        part_dict = {
             "inlineData": {
                 "mimeType": part.mime_type or "image/png",
                 "data": part.image_base64,
             }
         }
+        if part.thought:
+            part_dict["thought"] = True
+        return part_dict
 
     contents = []
     for msg in messages:
