@@ -84,8 +84,8 @@ class GeminiImageMessage(BaseModel):
     @field_validator("role")
     def normalize_role(cls, value: str) -> str:
         normalized = value.lower()
-        if normalized not in {"user", "assistant"}:
-            raise ValueError("role must be 'user' or 'assistant'")
+        if normalized not in {"user", "assistant", "model"}:
+            raise ValueError("role must be 'user', 'assistant', or 'model'")
         return normalized
 
     @model_validator(mode="after")
@@ -307,7 +307,9 @@ def _build_multi_turn_payload(
     contents = []
     for msg in messages:
         parts = [_to_gemini_part(p) for p in msg.parts]
-        contents.append({"role": msg.role, "parts": parts})
+        # Map 'assistant' to 'model' for the API
+        role = "model" if msg.role == "assistant" else msg.role
+        contents.append({"role": role, "parts": parts})
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
     payload: dict = {
