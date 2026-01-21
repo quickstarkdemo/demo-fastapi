@@ -935,7 +935,7 @@ def generate_unhandled_error(error_message, labels=None, filename=None):
     }
 
     try:
-        with observability_provider.trace_context("demo.unhandled_error", op="bug_detection") as span:
+        with observability_provider.trace_context("demo.unhandled_error", resource="bug_detection") as span:
             _set_span_tags(span, tags)
 
             def nested_function_1():
