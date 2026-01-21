@@ -443,6 +443,7 @@ jobs:
             -e DD_DBM_PROPAGATION_MODE=full \
             -e DD_DATA_STREAMS_ENABLED="${{ secrets.DD_DATA_STREAMS_ENABLED || 'true' }}" \
             -e DD_TRACE_REMOVE_INTEGRATION_SERVICE_NAMES_ENABLED="${{ secrets.DD_TRACE_REMOVE_INTEGRATION_SERVICE_NAMES_ENABLED || 'true' }}" \
+            -e DD_REMOTE_CONFIGURATION_ENABLED=true \
             -e SENTRY_DSN="${{ secrets.SENTRY_DSN || '' }}" \
             -e SENTRY_ENVIRONMENT="${{ secrets.SENTRY_ENVIRONMENT || secrets.DD_ENV || 'production' }}" \
             -e SENTRY_RELEASE="${{ steps.version.outputs.version }}" \
