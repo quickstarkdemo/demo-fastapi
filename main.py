@@ -956,6 +956,15 @@ def generate_unhandled_error(error_message, labels=None, filename=None):
                     )
                 except Exception as record_error_exc:
                     logger.error(f"Failed to record demo unhandled error: {record_error_exc}")
+
+                # CRITICAL: Re-raise pattern for Datadog Error Tracking
+                # This marks the error as "unhandled" which triggers Error Tracking capture
+                # Without this, only span tags are set but Error Tracking doesn't see it
+                try:
+                    raise exc
+                except Exception:
+                    # Suppress after re-raise - Datadog has now captured it as unhandled
+                    pass
     except Exception as outer_error:
         logger.error(f"Failed to generate demo unhandled error: {outer_error}")
 
