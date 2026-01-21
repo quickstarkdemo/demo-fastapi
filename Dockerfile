@@ -16,7 +16,7 @@ RUN apt-get update && \
 COPY requirements.txt .
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
-    
+
 # Copy application code
 COPY . .
 
@@ -47,6 +47,7 @@ ENV PYTHONPATH=/app \
     DD_TRACE_HTTP_RESOURCE_PATTERNS_ENABLED=true \
     DD_TRACE_HTTP_RESOURCE_PATTERN="/delete_image/*" \
     DD_CODE_ORIGIN_FOR_SPANS_ENABLED=true \
+    DD_EXCEPTION_REPLAY_ENABLED=true \
     # Sentry Configuration (defaults, override at runtime)
     SENTRY_DSN="" \
     SENTRY_ENVIRONMENT="dev" \
