@@ -218,7 +218,7 @@ async def datadog_hello():
     return {"message": "You've reached the Datadog Events endpoint"}
 
 @router_datadog.post("/datadog-event")
-@tracer.wrap(service="datadog-service", resource="post_event")
+@tracer.wrap(resource="post_event")
 async def post_datadog_event(request: DatadogEventRequest):
     """
     Post an event to Datadog Events API
@@ -278,7 +278,7 @@ async def post_datadog_event(request: DatadogEventRequest):
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 @router_datadog.get("/datadog-events")
-@tracer.wrap(service="datadog-service", resource="get_events")
+@tracer.wrap(resource="get_events")
 async def get_datadog_events(
     start: Optional[int] = None,
     end: Optional[int] = None,
@@ -343,7 +343,7 @@ async def get_datadog_events(
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 @router_datadog.post("/app-event/{event_type}")
-@tracer.wrap(service="datadog-service", resource="app_event")
+@tracer.wrap(resource="app_event")
 async def app_event(
     event_type: str = Path(..., description="Type of event: error, warning, info, success"),
     message: str = None
@@ -390,7 +390,7 @@ async def app_event(
         raise HTTPException(status_code=500, detail=f"Error posting app event: {str(e)}")
 
 @router_datadog.post("/track-api-request")
-@tracer.wrap(service="datadog-service", resource="track_api_request")
+@tracer.wrap(resource="track_api_request")
 async def track_api_request(
     endpoint: str,
     method: str = "GET",
@@ -457,7 +457,7 @@ async def track_api_request(
         raise HTTPException(status_code=500, detail=f"Error tracking API request: {str(e)}")
 
 @router_datadog.post("/bug-detection-event")
-@tracer.wrap(service="datadog-service", resource="bug_detection_event")
+@tracer.wrap(resource="bug_detection_event")
 async def bug_detection_event(
     filename: str,
     labels: List[str],

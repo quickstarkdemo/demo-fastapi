@@ -134,7 +134,7 @@ async def process_youtube_video(youtube_url: str, instructions: str = None, save
         logger.error(f"Unexpected error in process_youtube_video: {str(e)}", exc_info=True)
         return {"error": f"Server error: {str(e)}"}
 
-@tracer.wrap(service="youtube-service", resource="get_video_id")
+@tracer.wrap(resource="get_video_id")
 def get_video_id(youtube_url: str) -> str:
     """Extracts the video ID from a YouTube URL with enhanced URL format support."""
     try:
@@ -184,7 +184,7 @@ def get_video_id(youtube_url: str) -> str:
         logger.error(f"Error extracting video ID from {youtube_url}: {str(e)}", exc_info=True)
         return None
 
-@tracer.wrap(service="youtube-service", resource="get_youtube_video_details_pytube")
+@tracer.wrap(resource="get_youtube_video_details_pytube")
 def get_youtube_video_details_pytube(youtube_url: str):
     """Fetches title and published date for a YouTube video using pytube (no API key needed)"""
     try:
@@ -313,7 +313,7 @@ def get_youtube_metadata_fallback(youtube_url: str):
     logger.info(f"Fallback extraction results - Title: {title}, Channel: {channel}, Views: {views}")
     return result
 
-@tracer.wrap(service="youtube-service", resource="get_youtube_transcript")
+@tracer.wrap(resource="get_youtube_transcript")
 def get_youtube_transcript(video_id: str):
     """Retrieves the transcript for a YouTube video ID with enhanced error handling."""
     try:
@@ -419,7 +419,7 @@ def get_youtube_transcript(video_id: str):
         
         return {"error": error_msg}
 
-@tracer.wrap(service="youtube-service", resource="generate_video_summary_async")
+@tracer.wrap(resource="generate_video_summary_async")
 async def generate_video_summary_async(transcript: str, instructions: str = None):
     """Generate a summary of the video transcript using OpenAI's async client"""
     try:
@@ -467,7 +467,7 @@ async def generate_video_summary_async(transcript: str, instructions: str = None
         return {"error": f"Error during AI summarization: {str(e)}"}
 
 # Keep the synchronous version for backward compatibility
-@tracer.wrap(service="youtube-service", resource="generate_video_summary")
+@tracer.wrap(resource="generate_video_summary")
 def generate_video_summary(transcript: str, instructions: str = None):
     """Generate a summary of the video transcript using OpenAI"""
     try:

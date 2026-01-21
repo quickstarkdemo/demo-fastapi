@@ -38,7 +38,7 @@ class NotionVideoPayload(BaseModel):
     # Add other fields if your Notion database has more properties (e.g., video_id)
     # video_id: Optional[str] = None
 
-@tracer.wrap(service="notion-service", resource="add_video_summary")
+@tracer.wrap(resource="add_video_summary")
 async def add_video_summary_to_notion(payload: NotionVideoPayload, views_as_number: bool = True, transcript: Optional[str] = None) -> dict:
     """Adds a YouTube video summary entry to the configured Notion database.
     

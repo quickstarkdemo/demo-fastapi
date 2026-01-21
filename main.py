@@ -4,13 +4,55 @@ import logging
 import traceback
 import asyncio
 
+# Enable Datadog log injection before configuring logging
+# This ensures trace IDs are automatically injected into log records
+os.environ.setdefault('DD_LOGS_INJECTION', 'true')
+
 # Set up logging FIRST (before any other code uses logger)
+# Include Datadog trace correlation fields (dd.trace_id, dd.span_id, dd.service, dd.env, dd.version)
+# These fields enable log-trace correlation in Datadog
+LOG_FORMAT = (
+    '%(asctime)s - %(name)s - %(levelname)s - '
+    '[dd.service=%(dd.service)s dd.env=%(dd.env)s dd.version=%(dd.version)s '
+    'dd.trace_id=%(dd.trace_id)s dd.span_id=%(dd.span_id)s] - %(message)s'
+)
+
+# Custom log record factory to inject Datadog trace context
+_old_factory = logging.getLogRecordFactory()
+
+def _dd_log_record_factory(*args, **kwargs):
+    """Custom log record factory that injects Datadog trace context."""
+    record = _old_factory(*args, **kwargs)
+
+    # Set default values for Datadog fields
+    record.__dict__.setdefault('dd.service', os.getenv('DD_SERVICE', 'fastapi-app'))
+    record.__dict__.setdefault('dd.env', os.getenv('DD_ENV', 'dev'))
+    record.__dict__.setdefault('dd.version', os.getenv('DD_VERSION', '1.0'))
+    record.__dict__.setdefault('dd.trace_id', '0')
+    record.__dict__.setdefault('dd.span_id', '0')
+
+    # Try to get current trace context from ddtrace
+    try:
+        from ddtrace import tracer
+        span = tracer.current_span()
+        if span:
+            # Use span context for trace/span IDs
+            record.__dict__['dd.trace_id'] = str(span.trace_id)
+            record.__dict__['dd.span_id'] = str(span.span_id)
+    except Exception:
+        # ddtrace not available or no active span
+        pass
+
+    return record
+
+logging.setLogRecordFactory(_dd_log_record_factory)
+
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format=LOG_FORMAT
 )
 logger = logging.getLogger(__name__)
-logger.info("Logging configured.")
+logger.info("Logging configured with Datadog trace correlation.")
 
 # Set environment variables before any Datadog imports
 def configure_llmobs():

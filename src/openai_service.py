@@ -53,7 +53,7 @@ async def openai_hello():
     return {"message": "You've reached the OpenAI endpoint"}
 
 @router_openai.get("/openai-gen-image/{search}")
-@tracer.wrap(service="openai-service", resource="generate_image")
+@tracer.wrap(resource="generate_image")
 async def openai_gen_image(search: str):
     """Generate an image using OpenAI's DALL-E 3 model.
     
@@ -112,7 +112,7 @@ class BatchYouTubeRequest(BaseModel):
     max_parallel: int = 3
 
 @router_openai.post("/summarize-youtube")
-@tracer.wrap(service="openai-service", resource="summarize_youtube")
+@tracer.wrap(resource="summarize_youtube")
 async def summarize_youtube_video(request: YouTubeRequest):
     """Process YouTube video to generate AI-powered summary.
     
@@ -180,7 +180,7 @@ async def summarize_youtube_video(request: YouTubeRequest):
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 @router_openai.post("/batch-summarize-youtube")
-@tracer.wrap(service="openai-service", resource="batch_summarize_youtube")
+@tracer.wrap(resource="batch_summarize_youtube")
 async def batch_summarize_youtube_videos(request: BatchYouTubeRequest):
     """Process multiple YouTube videos with various strategies.
     

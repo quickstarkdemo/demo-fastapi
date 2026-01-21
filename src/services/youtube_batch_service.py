@@ -69,7 +69,7 @@ class YouTubeBatchProcessor:
         """Count tokens in text using tiktoken."""
         return len(self.encoding.encode(text))
     
-    @tracer.wrap(service="youtube-batch-service", resource="process_urls_batch")
+    @tracer.wrap(resource="process_urls_batch")
     async def process_urls_batch(
         self,
         urls: List[str],

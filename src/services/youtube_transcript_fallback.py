@@ -14,7 +14,7 @@ from ddtrace import tracer
 
 logger = logging.getLogger(__name__)
 
-@tracer.wrap(service="youtube-fallback", resource="extract_transcript_from_watch_page")
+@tracer.wrap(resource="extract_transcript_from_watch_page")
 async def extract_transcript_from_watch_page(video_id: str) -> Dict[str, Any]:
     """
     Alternative transcript extraction by parsing the YouTube watch page.
@@ -175,7 +175,7 @@ def extract_transcript_from_page_text(page_content: str) -> Optional[str]:
         logger.warning(f"Failed to extract transcript from page text: {str(e)}")
         return None
 
-@tracer.wrap(service="youtube-fallback", resource="get_transcript_with_fallback")
+@tracer.wrap(resource="get_transcript_with_fallback")
 async def get_transcript_with_fallback(video_id: str, primary_method_result: Dict[str, Any]) -> Dict[str, Any]:
     """
     Try fallback transcript extraction methods if primary method fails.
