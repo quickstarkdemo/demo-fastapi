@@ -48,6 +48,8 @@ class GeminiImageResponse(BaseModel):
     image_base64: str
     prompt: str
     size: str
+    thought: Optional[bool] = None
+    thought_signature: Optional[str] = None
 
 
 class GeminiImagePart(BaseModel):
@@ -69,6 +71,10 @@ class GeminiImagePart(BaseModel):
     thought: Optional[bool] = Field(
         default=None,
         description="Whether this part represents a thought (Chain of Thought)",
+    )
+    thought_signature: Optional[str] = Field(
+        default=None,
+        description="Signature for thought parts, required for multi-turn CoT",
     )
 
     @model_validator(mode="after")
@@ -131,11 +137,12 @@ def _llm_span(operation: str, model_name: str, prompt: str, extra_tags: Optional
 
     with tracer.trace(
         "llm.request",
-        service="gemini-service",
+        service=os.getenv("DD_SERVICE", "fastapi-app"),
         resource=operation,
         span_type="llm",
     ) as span:
         try:
+            span.set_tag("span.kind", "llm")
             span.set_tag("component", "gemini")
             span.set_tag("llm.provider", "google")
             span.set_tag("llm.model", model_name)
@@ -189,29 +196,43 @@ def _normalize_aspect_ratio(width: int, height: int) -> Optional[str]:
     return None
 
 
-def _extract_image_payload(data: dict) -> Tuple[str, str]:
+def _extract_image_payload(data: dict) -> dict:
     """
-    Extract base64 image payload and mime type from Gemini image response.
-    Supports both inlineData (camelCase) and inline_data (legacy) plus a minimal images array fallback.
+    Extract base64 image payload, mime type, and CoT metadata from Gemini response.
+    Returns a dict with keys: data, mime_type, thought, thought_signature (optional).
     """
+    result = {"data": None, "mime_type": "image/png"}
     try:
         candidates = data.get("candidates", [])
-        parts = candidates[0]["content"]["parts"]
-        logger.info("Gemini raw response parts: %s", parts)
-        inline_data = None
+        if not candidates:
+            return result
+            
+        parts = candidates[0].get("content", {}).get("parts", [])
+        
+        # Look for thought/signature in any part
         for p in parts:
+            if p.get("thought"):
+                result["thought"] = True
+            if "thought_signature" in p:
+                result["thought_signature"] = p["thought_signature"]
+                
+            # Look for image data
             if "inlineData" in p:
-                inline_data = p.get("inlineData")
-                break
-            if "inline_data" in p:
-                inline_data = p.get("inline_data")
-                break
-
-        if inline_data and "data" in inline_data:
-            mime = inline_data.get("mimeType") or inline_data.get("mime_type") or "image/png"
-            return inline_data.get("data"), mime
+                inline = p["inlineData"]
+                if "data" in inline:
+                    result["data"] = inline["data"]
+                    result["mime_type"] = inline.get("mimeType", "image/png")
+            elif "inline_data" in p:
+                inline = p["inline_data"]
+                if "data" in inline:
+                    result["data"] = inline["data"]
+                    result["mime_type"] = inline.get("mimeType", "image/png")
+                    
+        return result
+            
     except Exception as e:
         logger.debug("Inline data parse failed: %s", e)
+        return result
 
     # Fallback shape some beta responses use
     images = data.get("images") or data.get("image")
@@ -310,6 +331,8 @@ def _build_multi_turn_payload(
         }
         if part.thought:
             part_dict["thought"] = True
+        if part.thought_signature:
+            part_dict["thought_signature"] = part.thought_signature
         return part_dict
 
     contents = []
@@ -389,7 +412,9 @@ async def generate_gemini_image(request: GeminiImageRequest):
                     )
                 data = resp.json()
 
-            image_b64, mime_type = _extract_image_payload(data)
+            extracted = _extract_image_payload(data)
+            image_b64 = extracted.get("data")
+            mime_type = extracted.get("mime_type")
             if span:
                 span.set_tag("llm.response.mime_type", mime_type)
                 span.set_tag("llm.response.size", f"{width}x{height}")
@@ -457,7 +482,10 @@ async def edit_gemini_image(request: GeminiMultiTurnRequest):
                     )
                 data = resp.json()
 
-            image_b64, mime_type = _extract_image_payload(data)
+            extracted = _extract_image_payload(data)
+            image_b64 = extracted.get("data")
+            mime_type = extracted.get("mime_type")
+            
             if span:
                 span.set_tag("llm.response.mime_type", mime_type)
                 span.set_tag("llm.response.size", size_label)
@@ -470,6 +498,8 @@ async def edit_gemini_image(request: GeminiMultiTurnRequest):
                 image_base64=image_b64,
                 prompt=prompt_summary,
                 size=size_label,
+                thought=extracted.get("thought"),
+                thought_signature=extracted.get("thought_signature"),
             )
     except HTTPException:
         raise
