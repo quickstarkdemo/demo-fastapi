@@ -60,7 +60,7 @@ def configure_llmobs():
     Configure LLM Observability evaluators only if dependencies are present.
     Avoids startup crashes when ragas is not installed in the runtime image.
     """
-    os.environ["DD_LLMOBS_ML_APP"] = "youtube-summarizer"
+    os.environ["DD_LLMOBS_ML_APP"] = "fastapi-app"
     try:
         import ragas  # noqa: F401
         os.environ["DD_LLMOBS_EVALUATORS"] = "ragas_faithfulness,ragas_context_precision,ragas_answer_relevancy"
