@@ -1,4 +1,4 @@
-name: Build and Deploy (Self-Hosted Runner)
+name: Deploy Demo FastAPI
 on:
   push:
     branches: [ main ]
