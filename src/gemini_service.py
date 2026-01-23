@@ -7,6 +7,8 @@ Uses the Gemini image generation endpoint (Imagen 3.5 Flash by default).
 import os
 import logging
 import sys
+import json
+import time
 from contextlib import contextmanager
 from typing import List, Optional, Tuple, Any
 import math
@@ -299,59 +301,156 @@ def _extract_image_payload(data: dict) -> dict:
 
     IMPORTANT: For multi-turn conversations, the client MUST pass back ALL
     response_parts with their signatures to avoid 400 errors.
+
+    Instrumented with LLMObs.tool() for hierarchical span tracking.
     """
-    result = {
-        "data": None,
-        "mime_type": "image/png",
-        "thought": None,
-        "thought_signature": None,
-        "response_parts": []
-    }
+    if _is_llmobs_enabled():
+        with _LLMObs.tool(name="extract_image_payload") as tool_span:
+            extraction_start = time.time()
 
-    try:
-        candidates = data.get("candidates", [])
-        if not candidates:
-            return result
-
-        parts = candidates[0].get("content", {}).get("parts", [])
-
-        # Extract ALL parts with their signatures for multi-turn support
-        for idx, p in enumerate(parts):
-            part_info = {
-                "index": idx,
-                "thought": p.get("thought"),
-                "thought_signature": p.get("thought_signature"),
-                "mime_type": None,
-                "has_image": False
+            result = {
+                "data": None,
+                "mime_type": "image/png",
+                "thought": None,
+                "thought_signature": None,
+                "response_parts": []
             }
 
-            # Track if any part has thought
-            if p.get("thought"):
-                result["thought"] = True
+            try:
+                candidates = data.get("candidates", [])
+                if not candidates:
+                    _LLMObs.annotate(
+                        span=tool_span,
+                        input_data={"candidates_count": 0},
+                        output_data={"image_extracted": False, "reason": "no_candidates"}
+                    )
+                    return result
 
-            # Look for image data in this part
-            inline = p.get("inlineData") or p.get("inline_data")
-            if inline:
-                mime_type = inline.get("mimeType") or inline.get("mime_type", "image/png")
-                part_info["mime_type"] = mime_type
+                parts = candidates[0].get("content", {}).get("parts", [])
 
-                if "data" in inline:
-                    part_info["has_image"] = True
-                    # Store the first image found as the primary result
-                    if result["data"] is None:
-                        result["data"] = inline["data"]
-                        result["mime_type"] = mime_type
-                        # Store this signature for backward compatibility
-                        if p.get("thought_signature"):
-                            result["thought_signature"] = p["thought_signature"]
+                # Input tracking
+                _LLMObs.annotate(
+                    span=tool_span,
+                    input_data={
+                        "candidates_count": len(candidates),
+                        "parts_count": len(parts),
+                        "raw_response_size": len(str(data))
+                    }
+                )
 
-            result["response_parts"].append(part_info)
+                # Extract ALL parts with their signatures for multi-turn support
+                for idx, p in enumerate(parts):
+                    part_info = {
+                        "index": idx,
+                        "thought": p.get("thought"),
+                        "thought_signature": p.get("thought_signature"),
+                        "mime_type": None,
+                        "has_image": False
+                    }
 
-        return result
+                    # Track if any part has thought
+                    if p.get("thought"):
+                        result["thought"] = True
 
-    except Exception as e:
-        logger.debug("Inline data parse failed: %s", e)
-        return result
+                    # Look for image data in this part
+                    inline = p.get("inlineData") or p.get("inline_data")
+                    if inline:
+                        mime_type = inline.get("mimeType") or inline.get("mime_type", "image/png")
+                        part_info["mime_type"] = mime_type
+
+                        if "data" in inline:
+                            part_info["has_image"] = True
+                            # Store the first image found as the primary result
+                            if result["data"] is None:
+                                result["data"] = inline["data"]
+                                result["mime_type"] = mime_type
+                                # Store this signature for backward compatibility
+                                if p.get("thought_signature"):
+                                    result["thought_signature"] = p["thought_signature"]
+
+                    result["response_parts"].append(part_info)
+
+                extraction_duration_ms = (time.time() - extraction_start) * 1000
+
+                # Output tracking
+                _LLMObs.annotate(
+                    span=tool_span,
+                    output_data={
+                        "image_extracted": bool(result["data"]),
+                        "image_bytes": len(result["data"]) if result["data"] else 0,
+                        "mime_type": result["mime_type"],
+                        "thought_present": bool(result["thought"]),
+                        "parts_extracted": len(result["response_parts"])
+                    },
+                    metadata={
+                        "extraction_time_ms": extraction_duration_ms,
+                        "thought_signature": result.get("thought_signature"),
+                        "has_multiple_parts": len(result["response_parts"]) > 1
+                    }
+                )
+
+                return result
+
+            except Exception as e:
+                logger.debug("Inline data parse failed: %s", e)
+
+                # Error annotation
+                _LLMObs.annotate(
+                    span=tool_span,
+                    output_data={"error": True, "extracted": False},
+                    metadata={"error_message": str(e)}
+                )
+
+                return result
+    else:
+        # Fallback: no instrumentation
+        result = {
+            "data": None,
+            "mime_type": "image/png",
+            "thought": None,
+            "thought_signature": None,
+            "response_parts": []
+        }
+
+        try:
+            candidates = data.get("candidates", [])
+            if not candidates:
+                return result
+
+            parts = candidates[0].get("content", {}).get("parts", [])
+
+            for idx, p in enumerate(parts):
+                part_info = {
+                    "index": idx,
+                    "thought": p.get("thought"),
+                    "thought_signature": p.get("thought_signature"),
+                    "mime_type": None,
+                    "has_image": False
+                }
+
+                if p.get("thought"):
+                    result["thought"] = True
+
+                inline = p.get("inlineData") or p.get("inline_data")
+                if inline:
+                    mime_type = inline.get("mimeType") or inline.get("mime_type", "image/png")
+                    part_info["mime_type"] = mime_type
+
+                    if "data" in inline:
+                        part_info["has_image"] = True
+                        if result["data"] is None:
+                            result["data"] = inline["data"]
+                            result["mime_type"] = mime_type
+                            if p.get("thought_signature"):
+                                result["thought_signature"] = p["thought_signature"]
+
+                result["response_parts"].append(part_info)
+
+            return result
+
+        except Exception as e:
+            logger.debug("Inline data parse failed: %s", e)
+            return result
 
 
 def _build_payload(model_name: str, prompt: str, width: int, height: int) -> Tuple[str, dict]:
@@ -359,48 +458,117 @@ def _build_payload(model_name: str, prompt: str, width: int, height: int) -> Tup
     Build the appropriate endpoint URL and payload based on the model.
     - Imagen models use the imagegeneration:generate endpoint.
     - Other Gemini models (e.g., gemini-3-pro-image-preview) use generateContent.
+
+    Instrumented with LLMObs.tool() for hierarchical span tracking.
     """
-    # Imagen family uses the dedicated imagegeneration endpoint
-    if model_name.startswith("imagen-"):
-        url = "https://generativelanguage.googleapis.com/v1beta/models/imagegeneration:generate"
-        payload = {
-            "model": model_name,
-            "prompt": {"text": prompt},
-            "imageGenerationConfig": {
-                "sampleCount": 1,
-                "height": height,
-                "width": width,
-            },
-        }
-        return url, payload
+    if _is_llmobs_enabled():
+        with _LLMObs.tool(name="build_payload") as tool_span:
+            # Input tracking
+            _LLMObs.annotate(
+                span=tool_span,
+                input_data={
+                    "model": model_name,
+                    "prompt": prompt[:100] + "..." if len(prompt) > 100 else prompt,
+                    "dimensions": f"{width}x{height}"
+                }
+            )
 
-    # Gemini v1/v2/v3 image-capable models use generateContent
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
-    aspect_ratio = _normalize_aspect_ratio(width, height)
-    image_config = {}
-    if aspect_ratio:
-        image_config["aspectRatio"] = aspect_ratio
+            # Build logic
+            if model_name.startswith("imagen-"):
+                url = "https://generativelanguage.googleapis.com/v1beta/models/imagegeneration:generate"
+                payload = {
+                    "model": model_name,
+                    "prompt": {"text": prompt},
+                    "imageGenerationConfig": {
+                        "sampleCount": 1,
+                        "height": height,
+                        "width": width,
+                    },
+                }
+                endpoint_type = "imagen"
+                aspect_ratio = None
+            else:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+                aspect_ratio = _normalize_aspect_ratio(width, height)
+                image_config = {}
+                if aspect_ratio:
+                    image_config["aspectRatio"] = aspect_ratio
 
-    payload = {
-        "contents": [
-            {
-                "role": "user",
-                "parts": [
-                    {"text": prompt}
-                ],
+                payload = {
+                    "contents": [
+                        {
+                            "role": "user",
+                            "parts": [
+                                {"text": prompt}
+                            ],
+                        }
+                    ],
+                    "generationConfig": {
+                        "responseModalities": ["IMAGE"],
+                    },
+                    "safetySettings": [],
+                }
+                if image_config:
+                    payload["generationConfig"]["imageConfig"] = image_config
+
+                endpoint_type = "generateContent"
+
+            # Output tracking
+            _LLMObs.annotate(
+                span=tool_span,
+                output_data={
+                    "endpoint": url,
+                    "endpoint_type": endpoint_type,
+                    "payload_size_bytes": len(json.dumps(payload))
+                },
+                metadata={
+                    "aspect_ratio": aspect_ratio or "custom",
+                    "response_modalities": payload.get("generationConfig", {}).get("responseModalities", []),
+                    "safety_settings_count": len(payload.get("safetySettings", [])),
+                    "model_family": "imagen" if endpoint_type == "imagen" else "gemini"
+                }
+            )
+
+            return url, payload
+    else:
+        # Fallback: no instrumentation
+        if model_name.startswith("imagen-"):
+            url = "https://generativelanguage.googleapis.com/v1beta/models/imagegeneration:generate"
+            payload = {
+                "model": model_name,
+                "prompt": {"text": prompt},
+                "imageGenerationConfig": {
+                    "sampleCount": 1,
+                    "height": height,
+                    "width": width,
+                },
             }
-        ],
-        # Hint that we want an image response
-        "generationConfig": {
-            # Match doc guidance: explicitly request image
-            "responseModalities": ["IMAGE"],
-        },
-        "safetySettings": [],
-    }
-    if image_config:
-        payload["generationConfig"]["imageConfig"] = image_config
+            return url, payload
 
-    return url, payload
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+        aspect_ratio = _normalize_aspect_ratio(width, height)
+        image_config = {}
+        if aspect_ratio:
+            image_config["aspectRatio"] = aspect_ratio
+
+        payload = {
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [
+                        {"text": prompt}
+                    ],
+                }
+            ],
+            "generationConfig": {
+                "responseModalities": ["IMAGE"],
+            },
+            "safetySettings": [],
+        }
+        if image_config:
+            payload["generationConfig"]["imageConfig"] = image_config
+
+        return url, payload
 
 
 def _build_multi_turn_payload(
@@ -498,6 +666,8 @@ async def generate_gemini_image(request: GeminiImageRequest):
 
     The response includes `response_parts` with thought signatures that MUST be
     passed back in subsequent multi-turn requests to avoid validation errors.
+
+    Uses hierarchical LLM Observability spans for rich Datadog visualization.
     """
     api_key = GEMINI_API_KEY or os.getenv("GOOGLE_API_KEY") or os.getenv("GENAI_API_KEY")
     if not api_key:
@@ -506,82 +676,221 @@ async def generate_gemini_image(request: GeminiImageRequest):
     model_name = request.model or DEFAULT_MODEL
     width, height = _parse_size(request.size or "1024x1024")
 
-    url, payload = _build_payload(model_name, request.prompt, width, height)
-
     try:
-        with _llm_span(
-            operation="gemini.generate_image",
-            model_name=model_name,
-            prompt=request.prompt,
-            extra_tags={
-                "llm.request.size": f"{width}x{height}",
-                "llm.request.endpoint": url,
-            },
-        ) as span_context:
-            span = span_context.get("span") if span_context else None
+        if _is_llmobs_enabled():
+            # Use workflow hierarchy for rich span structure
+            with _LLMObs.workflow(name="image_generation") as workflow_span:
+                workflow_start = time.time()
 
-            async with httpx.AsyncClient(timeout=60) as client:
-                resp = await client.post(
-                    url,
-                    params={"key": api_key},
-                    headers={"x-goog-api-key": api_key},
-                    json=payload,
+                # Workflow input
+                _LLMObs.annotate(
+                    span=workflow_span,
+                    input_data={
+                        "prompt": request.prompt,
+                        "size": f"{width}x{height}",
+                        "model": model_name
+                    },
+                    metadata={
+                        "operation": "generate_image",
+                        "model_family": "gemini" if "gemini" in model_name else "imagen"
+                    }
                 )
-                if resp.status_code >= 400:
-                    text = resp.text
-                    logger.error("Gemini API error %s: %s", resp.status_code, text)
-                    if span:
-                        span.set_tag("error", True)
-                        span.set_tag("llm.response.body", text[:400])
-                        span.set_tag("http.status_code", str(resp.status_code))
-                    raise HTTPException(
-                        status_code=resp.status_code,
-                        detail=f"Gemini API error ({resp.status_code}): {text[:400]}",
+
+                # Step 1: Build payload (tool span - auto-instrumented)
+                url, payload = _build_payload(model_name, request.prompt, width, height)
+
+                # Step 2: API call (llm span with detailed tracking)
+                api_start = time.time()
+                with _LLMObs.llm(
+                    model_name=model_name,
+                    name="gemini.api_call",
+                    model_provider="google"
+                ) as llm_span:
+                    _LLMObs.annotate(
+                        span=llm_span,
+                        input_data=request.prompt,
+                        metadata={
+                            "endpoint": url,
+                            "request_size_bytes": len(json.dumps(payload)),
+                            "timeout": 60,
+                            "dimensions": f"{width}x{height}"
+                        }
                     )
-                data = resp.json()
 
-            extracted = _extract_image_payload(data)
-            image_b64 = extracted.get("data")
-            mime_type = extracted.get("mime_type")
+                    async with httpx.AsyncClient(timeout=60) as client:
+                        resp = await client.post(
+                            url,
+                            params={"key": api_key},
+                            headers={"x-goog-api-key": api_key},
+                            json=payload,
+                        )
 
-            if span:
-                span.set_tag("llm.response.mime_type", mime_type)
-                span.set_tag("llm.response.size", f"{width}x{height}")
-                span.set_tag("llm.response.model", model_name)
-                span.set_tag("http.status_code", str(resp.status_code))
+                        api_duration_ms = (time.time() - api_start) * 1000
 
-            # Annotate LLMObs span with input/output for proper tracking
-            _annotate_llm_span(
-                span_context,
-                input_data=request.prompt,
-                output_data={"image_generated": bool(image_b64), "mime_type": mime_type},
-                metadata={"size": f"{width}x{height}", "model": model_name}
-            )
+                        if resp.status_code >= 400:
+                            text = resp.text
+                            logger.error("Gemini API error %s: %s", resp.status_code, text)
 
-            # Build response_parts for multi-turn support
-            response_parts = None
-            if extracted.get("response_parts"):
-                response_parts = [
-                    GeminiPartSignature(
-                        index=p["index"],
-                        thought=p.get("thought"),
-                        thought_signature=p.get("thought_signature"),
-                        mime_type=p.get("mime_type"),
-                        has_image=p.get("has_image", False)
-                    )
-                    for p in extracted["response_parts"]
-                ]
+                            # Rich error annotation
+                            _LLMObs.annotate(
+                                span=llm_span,
+                                output_data={
+                                    "error": True,
+                                    "status_code": resp.status_code
+                                },
+                                metadata={
+                                    "error_message": text[:500],
+                                    "http_status_code": resp.status_code,
+                                    "api_latency_ms": api_duration_ms
+                                }
+                            )
 
-            return GeminiImageResponse(
-                model=model_name,
-                mime_type=mime_type,
-                image_base64=image_b64,
+                            raise HTTPException(
+                                status_code=resp.status_code,
+                                detail=f"Gemini API error ({resp.status_code}): {text[:400]}",
+                            )
+
+                        data = resp.json()
+
+                        # Success annotation
+                        _LLMObs.annotate(
+                            span=llm_span,
+                            output_data={
+                                "success": True,
+                                "candidates_count": len(data.get("candidates", [])),
+                                "response_size_bytes": len(resp.text)
+                            },
+                            metadata={
+                                "http_status_code": resp.status_code,
+                                "api_latency_ms": api_duration_ms,
+                                "content_type": resp.headers.get("content-type", "unknown")
+                            }
+                        )
+
+                # Step 3: Extract response (tool span - auto-instrumented)
+                extracted = _extract_image_payload(data)
+                image_b64 = extracted.get("data")
+                mime_type = extracted.get("mime_type")
+
+                workflow_duration_ms = (time.time() - workflow_start) * 1000
+
+                # Workflow output
+                _LLMObs.annotate(
+                    span=workflow_span,
+                    output_data={
+                        "image_generated": bool(image_b64),
+                        "image_bytes": len(image_b64) if image_b64 else 0,
+                        "mime_type": mime_type,
+                        "thought_present": bool(extracted.get("thought"))
+                    },
+                    metadata={
+                        "total_duration_ms": workflow_duration_ms,
+                        "model": model_name,
+                        "size": f"{width}x{height}",
+                        "thought_signature": extracted.get("thought_signature"),
+                        "response_parts_count": len(extracted.get("response_parts", []))
+                    }
+                )
+
+                # Build response_parts for multi-turn support
+                response_parts = None
+                if extracted.get("response_parts"):
+                    response_parts = [
+                        GeminiPartSignature(
+                            index=p["index"],
+                            thought=p.get("thought"),
+                            thought_signature=p.get("thought_signature"),
+                            mime_type=p.get("mime_type"),
+                            has_image=p.get("has_image", False)
+                        )
+                        for p in extracted["response_parts"]
+                    ]
+
+                return GeminiImageResponse(
+                    model=model_name,
+                    mime_type=mime_type,
+                    image_base64=image_b64,
+                    prompt=request.prompt,
+                    size=f"{width}x{height}",
+                    thought=extracted.get("thought"),
+                    thought_signature=extracted.get("thought_signature"),
+                    response_parts=response_parts,
+                )
+        else:
+            # Fallback to flat span if LLMObs not available
+            url, payload = _build_payload(model_name, request.prompt, width, height)
+
+            with _llm_span(
+                operation="gemini.generate_image",
+                model_name=model_name,
                 prompt=request.prompt,
-                size=f"{width}x{height}",
-                thought=extracted.get("thought"),
-                thought_signature=extracted.get("thought_signature"),
-                response_parts=response_parts,
-            )
+                extra_tags={
+                    "llm.request.size": f"{width}x{height}",
+                    "llm.request.endpoint": url,
+                },
+            ) as span_context:
+                span = span_context.get("span") if span_context else None
+
+                async with httpx.AsyncClient(timeout=60) as client:
+                    resp = await client.post(
+                        url,
+                        params={"key": api_key},
+                        headers={"x-goog-api-key": api_key},
+                        json=payload,
+                    )
+                    if resp.status_code >= 400:
+                        text = resp.text
+                        logger.error("Gemini API error %s: %s", resp.status_code, text)
+                        if span:
+                            span.set_tag("error", True)
+                            span.set_tag("llm.response.body", text[:400])
+                            span.set_tag("http.status_code", str(resp.status_code))
+                        raise HTTPException(
+                            status_code=resp.status_code,
+                            detail=f"Gemini API error ({resp.status_code}): {text[:400]}",
+                        )
+                    data = resp.json()
+
+                extracted = _extract_image_payload(data)
+                image_b64 = extracted.get("data")
+                mime_type = extracted.get("mime_type")
+
+                if span:
+                    span.set_tag("llm.response.mime_type", mime_type)
+                    span.set_tag("llm.response.size", f"{width}x{height}")
+                    span.set_tag("llm.response.model", model_name)
+                    span.set_tag("http.status_code", str(resp.status_code))
+
+                _annotate_llm_span(
+                    span_context,
+                    input_data=request.prompt,
+                    output_data={"image_generated": bool(image_b64), "mime_type": mime_type},
+                    metadata={"size": f"{width}x{height}", "model": model_name}
+                )
+
+                response_parts = None
+                if extracted.get("response_parts"):
+                    response_parts = [
+                        GeminiPartSignature(
+                            index=p["index"],
+                            thought=p.get("thought"),
+                            thought_signature=p.get("thought_signature"),
+                            mime_type=p.get("mime_type"),
+                            has_image=p.get("has_image", False)
+                        )
+                        for p in extracted["response_parts"]
+                    ]
+
+                return GeminiImageResponse(
+                    model=model_name,
+                    mime_type=mime_type,
+                    image_base64=image_b64,
+                    prompt=request.prompt,
+                    size=f"{width}x{height}",
+                    thought=extracted.get("thought"),
+                    thought_signature=extracted.get("thought_signature"),
+                    response_parts=response_parts,
+                )
     except HTTPException:
         raise
     except Exception as exc:
@@ -599,6 +908,8 @@ async def edit_gemini_image(request: GeminiMultiTurnRequest):
     2. The API will automatically use skip_thought_signature_validator for convenience.
 
     The response includes `response_parts` for subsequent turns.
+
+    Uses hierarchical LLM Observability spans for rich Datadog visualization.
     """
     api_key = GEMINI_API_KEY or os.getenv("GOOGLE_API_KEY") or os.getenv("GENAI_API_KEY")
     if not api_key:
@@ -606,91 +917,246 @@ async def edit_gemini_image(request: GeminiMultiTurnRequest):
 
     model_name = request.model or DEFAULT_MODEL
     try:
-        url, payload, size_label = _build_multi_turn_payload(
-            model_name=model_name,
-            messages=request.messages,
-            size=request.size,
-        )
+        if _is_llmobs_enabled():
+            # Use workflow hierarchy for rich span structure
+            with _LLMObs.workflow(name="image_editing") as workflow_span:
+                workflow_start = time.time()
 
-        prompt_summary = _last_user_prompt(request.messages)
-        with _llm_span(
-            operation="gemini.edit_image",
-            model_name=model_name,
-            prompt=prompt_summary,
-            extra_tags={
-                "llm.request.size": size_label,
-                "llm.request.endpoint": url,
-                "llm.request.turn_count": len(request.messages),
-            },
-        ) as span_context:
-            span = span_context.get("span") if span_context else None
-
-            async with httpx.AsyncClient(timeout=60) as client:
-                resp = await client.post(
-                    url,
-                    params={"key": api_key},
-                    headers={"x-goog-api-key": api_key},
-                    json=payload,
+                # Build multi-turn payload
+                url, payload, size_label = _build_multi_turn_payload(
+                    model_name=model_name,
+                    messages=request.messages,
+                    size=request.size,
                 )
-                if resp.status_code >= 400:
-                    text = resp.text
-                    logger.error("Gemini API error %s: %s", resp.status_code, text)
-                    if span:
-                        span.set_tag("error", True)
-                        span.set_tag("llm.response.body", text[:400])
-                        span.set_tag("http.status_code", str(resp.status_code))
-                    raise HTTPException(
-                        status_code=resp.status_code,
-                        detail=f"Gemini API error ({resp.status_code}): {text[:400]}",
+
+                prompt_summary = _last_user_prompt(request.messages)
+
+                # Count previous images in conversation
+                has_previous_image = any(
+                    p.image_base64 for m in request.messages for p in m.parts
+                )
+
+                # Workflow input
+                _LLMObs.annotate(
+                    span=workflow_span,
+                    input_data={
+                        "prompt": prompt_summary,
+                        "size": size_label,
+                        "model": model_name,
+                        "turn_count": len(request.messages)
+                    },
+                    metadata={
+                        "operation": "edit_image",
+                        "model_family": "gemini",
+                        "multi_turn": True,
+                        "has_previous_image": has_previous_image
+                    }
+                )
+
+                # API call (llm span with detailed tracking)
+                api_start = time.time()
+                with _LLMObs.llm(
+                    model_name=model_name,
+                    name="gemini.api_call_edit",
+                    model_provider="google"
+                ) as llm_span:
+                    _LLMObs.annotate(
+                        span=llm_span,
+                        input_data=prompt_summary,
+                        metadata={
+                            "endpoint": url,
+                            "request_size_bytes": len(json.dumps(payload)),
+                            "timeout": 60,
+                            "turn_count": len(request.messages),
+                            "has_previous_image": has_previous_image
+                        }
                     )
-                data = resp.json()
 
-            extracted = _extract_image_payload(data)
-            image_b64 = extracted.get("data")
-            mime_type = extracted.get("mime_type")
+                    async with httpx.AsyncClient(timeout=60) as client:
+                        resp = await client.post(
+                            url,
+                            params={"key": api_key},
+                            headers={"x-goog-api-key": api_key},
+                            json=payload,
+                        )
 
-            if span:
-                span.set_tag("llm.response.mime_type", mime_type)
-                span.set_tag("llm.response.size", size_label)
-                span.set_tag("llm.response.model", model_name)
-                span.set_tag("http.status_code", str(resp.status_code))
+                        api_duration_ms = (time.time() - api_start) * 1000
 
-            # Annotate LLMObs span with input/output for proper tracking
-            _annotate_llm_span(
-                span_context,
-                input_data=prompt_summary,
-                output_data={"image_generated": bool(image_b64), "mime_type": mime_type},
-                metadata={
-                    "size": size_label,
-                    "model": model_name,
-                    "turn_count": len(request.messages)
-                }
+                        if resp.status_code >= 400:
+                            text = resp.text
+                            logger.error("Gemini API error %s: %s", resp.status_code, text)
+
+                            # Rich error annotation
+                            _LLMObs.annotate(
+                                span=llm_span,
+                                output_data={
+                                    "error": True,
+                                    "status_code": resp.status_code
+                                },
+                                metadata={
+                                    "error_message": text[:500],
+                                    "http_status_code": resp.status_code,
+                                    "api_latency_ms": api_duration_ms
+                                }
+                            )
+
+                            raise HTTPException(
+                                status_code=resp.status_code,
+                                detail=f"Gemini API error ({resp.status_code}): {text[:400]}",
+                            )
+
+                        data = resp.json()
+
+                        # Success annotation
+                        _LLMObs.annotate(
+                            span=llm_span,
+                            output_data={
+                                "success": True,
+                                "candidates_count": len(data.get("candidates", [])),
+                                "response_size_bytes": len(resp.text)
+                            },
+                            metadata={
+                                "http_status_code": resp.status_code,
+                                "api_latency_ms": api_duration_ms,
+                                "content_type": resp.headers.get("content-type", "unknown")
+                            }
+                        )
+
+                # Extract response (tool span - auto-instrumented)
+                extracted = _extract_image_payload(data)
+                image_b64 = extracted.get("data")
+                mime_type = extracted.get("mime_type")
+
+                workflow_duration_ms = (time.time() - workflow_start) * 1000
+
+                # Workflow output
+                _LLMObs.annotate(
+                    span=workflow_span,
+                    output_data={
+                        "image_generated": bool(image_b64),
+                        "image_bytes": len(image_b64) if image_b64 else 0,
+                        "mime_type": mime_type,
+                        "thought_present": bool(extracted.get("thought"))
+                    },
+                    metadata={
+                        "total_duration_ms": workflow_duration_ms,
+                        "model": model_name,
+                        "size": size_label,
+                        "turn_count": len(request.messages),
+                        "thought_signature": extracted.get("thought_signature"),
+                        "response_parts_count": len(extracted.get("response_parts", []))
+                    }
+                )
+
+                # Build response_parts for subsequent multi-turn support
+                response_parts = None
+                if extracted.get("response_parts"):
+                    response_parts = [
+                        GeminiPartSignature(
+                            index=p["index"],
+                            thought=p.get("thought"),
+                            thought_signature=p.get("thought_signature"),
+                            mime_type=p.get("mime_type"),
+                            has_image=p.get("has_image", False)
+                        )
+                        for p in extracted["response_parts"]
+                    ]
+
+                return GeminiImageResponse(
+                    model=model_name,
+                    mime_type=mime_type,
+                    image_base64=image_b64,
+                    prompt=prompt_summary,
+                    size=size_label,
+                    thought=extracted.get("thought"),
+                    thought_signature=extracted.get("thought_signature"),
+                    response_parts=response_parts,
+                )
+        else:
+            # Fallback to flat span if LLMObs not available
+            url, payload, size_label = _build_multi_turn_payload(
+                model_name=model_name,
+                messages=request.messages,
+                size=request.size,
             )
 
-            # Build response_parts for subsequent multi-turn support
-            response_parts = None
-            if extracted.get("response_parts"):
-                response_parts = [
-                    GeminiPartSignature(
-                        index=p["index"],
-                        thought=p.get("thought"),
-                        thought_signature=p.get("thought_signature"),
-                        mime_type=p.get("mime_type"),
-                        has_image=p.get("has_image", False)
-                    )
-                    for p in extracted["response_parts"]
-                ]
-
-            return GeminiImageResponse(
-                model=model_name,
-                mime_type=mime_type,
-                image_base64=image_b64,
+            prompt_summary = _last_user_prompt(request.messages)
+            with _llm_span(
+                operation="gemini.edit_image",
+                model_name=model_name,
                 prompt=prompt_summary,
-                size=size_label,
-                thought=extracted.get("thought"),
-                thought_signature=extracted.get("thought_signature"),
-                response_parts=response_parts,
-            )
+                extra_tags={
+                    "llm.request.size": size_label,
+                    "llm.request.endpoint": url,
+                    "llm.request.turn_count": len(request.messages),
+                },
+            ) as span_context:
+                span = span_context.get("span") if span_context else None
+
+                async with httpx.AsyncClient(timeout=60) as client:
+                    resp = await client.post(
+                        url,
+                        params={"key": api_key},
+                        headers={"x-goog-api-key": api_key},
+                        json=payload,
+                    )
+                    if resp.status_code >= 400:
+                        text = resp.text
+                        logger.error("Gemini API error %s: %s", resp.status_code, text)
+                        if span:
+                            span.set_tag("error", True)
+                            span.set_tag("llm.response.body", text[:400])
+                            span.set_tag("http.status_code", str(resp.status_code))
+                        raise HTTPException(
+                            status_code=resp.status_code,
+                            detail=f"Gemini API error ({resp.status_code}): {text[:400]}",
+                        )
+                    data = resp.json()
+
+                extracted = _extract_image_payload(data)
+                image_b64 = extracted.get("data")
+                mime_type = extracted.get("mime_type")
+
+                if span:
+                    span.set_tag("llm.response.mime_type", mime_type)
+                    span.set_tag("llm.response.size", size_label)
+                    span.set_tag("llm.response.model", model_name)
+                    span.set_tag("http.status_code", str(resp.status_code))
+
+                _annotate_llm_span(
+                    span_context,
+                    input_data=prompt_summary,
+                    output_data={"image_generated": bool(image_b64), "mime_type": mime_type},
+                    metadata={
+                        "size": size_label,
+                        "model": model_name,
+                        "turn_count": len(request.messages)
+                    }
+                )
+
+                response_parts = None
+                if extracted.get("response_parts"):
+                    response_parts = [
+                        GeminiPartSignature(
+                            index=p["index"],
+                            thought=p.get("thought"),
+                            thought_signature=p.get("thought_signature"),
+                            mime_type=p.get("mime_type"),
+                            has_image=p.get("has_image", False)
+                        )
+                        for p in extracted["response_parts"]
+                    ]
+
+                return GeminiImageResponse(
+                    model=model_name,
+                    mime_type=mime_type,
+                    image_base64=image_b64,
+                    prompt=prompt_summary,
+                    size=size_label,
+                    thought=extracted.get("thought"),
+                    thought_signature=extracted.get("thought_signature"),
+                    response_parts=response_parts,
+                )
     except HTTPException:
         raise
     except Exception as exc:
