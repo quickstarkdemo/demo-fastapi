@@ -18,6 +18,9 @@ jobs:
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v4
+      with:
+        # Full history keeps Datadog diff-aware analysis reliable on PRs.
+        fetch-depth: 0
       
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -89,10 +92,13 @@ jobs:
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v4
+      with:
+        # Full history keeps Datadog diff-aware analysis reliable on PRs.
+        fetch-depth: 0
       
     - name: Check code meets quality and security standards
       id: datadog-static-analysis
-      uses: DataDog/datadog-static-analyzer-github-action@v1
+      uses: DataDog/datadog-static-analyzer-github-action@v3
       with:
         dd_api_key: ${{ secrets.DD_API_KEY }}
         dd_app_key: ${{ secrets.DD_APP_KEY }}
