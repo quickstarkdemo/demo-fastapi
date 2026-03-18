@@ -12,6 +12,7 @@ from typing import Optional, Dict, Any, List
 from ddtrace import tracer
 
 from openai import OpenAI
+from .ai_guard import evaluate_prompt, is_ai_guard_available
 from .services.youtube_service import get_video_id, get_youtube_transcript, generate_video_summary, process_youtube_video
 from .services.youtube_batch_service import YouTubeBatchProcessor, ProcessingStrategy, BatchProcessingResult
 from .observability.sentry_logging import (
@@ -70,6 +71,21 @@ async def openai_gen_image(search: str):
         HTTPException: If image generation fails or API is unavailable.
     """ 
     try:
+        if is_ai_guard_available():
+            guard_result = evaluate_prompt(
+                search,
+                system_prompt="You are an image generation assistant.",
+            )
+            if guard_result and guard_result["action"] != "ALLOW":
+                logger.warning(
+                    "AI Guard blocked image prompt: action=%s reason=%s",
+                    guard_result["action"], guard_result["reason"],
+                )
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Prompt blocked by AI Guard ({guard_result['action']}): {guard_result['reason']}",
+                )
+
         response = client.images.generate(
             model="dall-e-3",
             prompt=search,
@@ -79,6 +95,8 @@ async def openai_gen_image(search: str):
         )
         image_url = response.data[0].url
         return image_url
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error generating image: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error generating image: {str(e)}")
@@ -132,6 +150,21 @@ async def summarize_youtube_video(request: YouTubeRequest):
                       or AI summarization encounters errors.
     """
     try:
+        if request.instructions and is_ai_guard_available():
+            guard_result = evaluate_prompt(
+                request.instructions,
+                system_prompt="You are a YouTube video summarisation assistant.",
+            )
+            if guard_result and guard_result["action"] != "ALLOW":
+                logger.warning(
+                    "AI Guard blocked YouTube instructions: action=%s reason=%s",
+                    guard_result["action"], guard_result["reason"],
+                )
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Instructions blocked by AI Guard ({guard_result['action']}): {guard_result['reason']}",
+                )
+
         # Process video and get result - now async
         result = await process_youtube_video(
             request.url, 

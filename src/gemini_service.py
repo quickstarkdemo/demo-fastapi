@@ -25,6 +25,12 @@ try:
 except Exception:
     tracer = None
 
+try:
+    from .ai_guard import evaluate_prompt as _ai_guard_eval, is_ai_guard_available as _ai_guard_ok
+except Exception:
+    _ai_guard_eval = None
+    _ai_guard_ok = lambda: False
+
 # Optional LLMObs for proper LLM span tracking
 _llmobs_available = False
 _LLMObs = None
@@ -673,6 +679,21 @@ async def generate_gemini_image(request: GeminiImageRequest):
     if not api_key:
         raise HTTPException(status_code=500, detail="GEMINI_API_KEY is not configured")
 
+    if _ai_guard_ok():
+        guard_result = _ai_guard_eval(
+            request.prompt,
+            system_prompt="You are an image generation assistant.",
+        )
+        if guard_result and guard_result["action"] != "ALLOW":
+            logger.warning(
+                "AI Guard blocked Gemini prompt: action=%s reason=%s",
+                guard_result["action"], guard_result["reason"],
+            )
+            raise HTTPException(
+                status_code=403,
+                detail=f"Prompt blocked by AI Guard ({guard_result['action']}): {guard_result['reason']}",
+            )
+
     model_name = request.model or DEFAULT_MODEL
     width, height = _parse_size(request.size or "1024x1024")
 
@@ -914,6 +935,23 @@ async def edit_gemini_image(request: GeminiMultiTurnRequest):
     api_key = GEMINI_API_KEY or os.getenv("GOOGLE_API_KEY") or os.getenv("GENAI_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="GEMINI_API_KEY is not configured")
+
+    if _ai_guard_ok():
+        last_prompt = _last_user_prompt(request.messages)
+        if last_prompt:
+            guard_result = _ai_guard_eval(
+                last_prompt,
+                system_prompt="You are an image editing assistant.",
+            )
+            if guard_result and guard_result["action"] != "ALLOW":
+                logger.warning(
+                    "AI Guard blocked Gemini edit prompt: action=%s reason=%s",
+                    guard_result["action"], guard_result["reason"],
+                )
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Prompt blocked by AI Guard ({guard_result['action']}): {guard_result['reason']}",
+                )
 
     model_name = request.model or DEFAULT_MODEL
     try:

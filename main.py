@@ -215,6 +215,7 @@ tags_metadata = [
     {"name": "SQL Server", "description": "Image metadata operations in SQL Server."},
     {"name": "Database Status", "description": "Backend database configuration and health."},
     {"name": "Datadog", "description": "Datadog events and alerting helpers."},
+    {"name": "AI Guard", "description": "Datadog AI Guard LLM security evaluation."},
     {"name": "Health", "description": "Liveness and readiness-style checks."},
     {"name": "Diagnostics", "description": "Debug, profiling, and test utilities."},
     {"name": "Utilities", "description": "Sample helper endpoints and JSONPlaceholder demo."},
@@ -242,6 +243,7 @@ from src.datadog import app_event, bug_detection_event  # Explicit imports for e
 from src.database_status import router as router_database_status  # Database status endpoints
 from src.gemini_service import router_gemini  # Gemini image generation
 from src.services.kafka import router_kafka_demo  # Kafka demo endpoints
+from src.ai_guard import router_ai_guard  # AI Guard evaluation endpoints
 
 # Define CORS origins
 origins = [
@@ -291,6 +293,8 @@ try:
     logger.info("Gemini router included.")
     app.include_router(router_kafka_demo)
     logger.info("Kafka demo router included.")
+    app.include_router(router_ai_guard, prefix="/api/v1", tags=["AI Guard"])
+    logger.info("AI Guard router included.")
 except Exception as e:
     logger.error(f"Error including routers: {e}")
 
