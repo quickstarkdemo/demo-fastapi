@@ -192,4 +192,5 @@ tasks.json
 runner-data/
 runner-cache/
 runner-tools/
-tailscale-state/ 
+tailscale-state/
+.deploy/

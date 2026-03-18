@@ -8,11 +8,17 @@ Helper scripts for local development and operations. Run them from the repo root
 
 ## Environment & Secrets
 - `setup-databases.sh` – Interactive helper to load the PostgreSQL/SQL Server schemas from `sql/`.
-- `setup-secrets.sh` – Uploads environment variables from a file to GitHub Actions secrets (skips `SYNOLOGY_SSH_KEY` automatically).
+- `setup-secrets.sh` – Uploads environment variables from a file to GitHub Actions secrets (skips `ENV_FILE_HASH` and `GMKTEC_SSH_KEY` automatically).
 - `clear-secrets.sh` – Removes GitHub Actions secrets. Useful flags: `--dry-run`, `--pattern '^SYNOLOGY_'`, `--exclude DD_API_KEY,DD_APP_KEY`, `--all`.
 
 ## Deployment & Runners
-- `deploy.sh` – Guided deployment helper: validates an env file, checks git status, uploads secrets (with `--force` option), and links you to the workflow run.
+- `deploy.sh` – SemVer-aware deploy workflow with staged-only git discipline:
+  - validates required env keys (`PG*`, `DOCKERHUB_USER`, `DOCKERHUB_TOKEN`)
+  - updates `VERSION` via `--bump` / `--version`
+  - tracks env sync fingerprints in `.deploy/`
+  - generates deploy notes/history and commit metadata
+  - can trigger `deploy-self-hosted.yaml` when no staged changes exist
+  - flags: `--env-file`, `--version`, `--bump`, `--non-interactive`, `--use-release-brief`, `--ignore-release-brief`
 - `setup-runner.sh` – Bootstraps the Docker-based self-hosted GitHub runner using values from `runner.env.example`.
 
 ## Observability Utilities
